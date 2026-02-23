@@ -1,12 +1,6 @@
 #include "functions.h"
 #include <random> 
-#define DEBUG_MAIN 1
 
-#if DEBUG_MAIN
-#define DBG(x) std::cout << "[DEBUG] " << x << std::endl;
-#else
-#define DBG(x)
-#endif
 std::random_device rd; 
 std::mt19937 gen(rd()); 
 std::uniform_real_distribution<> dis(0.0, 1.0);
@@ -24,11 +18,6 @@ std::uniform_real_distribution<> dis(0.0, 1.0);
 #define COSZERO (1.0 - 1.0e-12)
 #define g 0.9
 #define nt 1.33
-#include <atomic>
-std::atomic<size_t> completedTasks(0);
-double normalization = 0.0;
-int found_count = 0;
-int missing_count = 0;
 
 
 double MonteCarlo(double epi_mua, double epi_mus, double derm_mua, double derm_mus, double epidermis_thickness) {
@@ -292,125 +281,123 @@ std::vector<double> CalculateReflectanceRow(double Cm, double Ch, double Bm, dou
     }
 }
 
-std::vector<double> Bioskin(double melanin_concentration,
-    double blood_concentration,
-    double melanin_blend,
-    double blood_oxy,
-    double epidermis_thickness)  
-{
+std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fraction of melanin in epidermis
+    double blood_concentration,    // Ch: Volume fraction of blood in dermis
+    double melanin_blend,          // Bm: Ratio of eumelanin (1.0) to pheomelanin (0.0)
+    double blood_oxy,              // NEW NAME! Blood oxygenation level (0-1)
+    double epidermis_thickness     // T: Thickness of epidermis in cm
+)  {
+    // Wavelength range: 380 to 800 nm with 5nm step
     int step_size = 5;
     std::vector<double> wavelengths = generateArray(380, 800, step_size, false);
     std::vector<double> reflectances(wavelengths.size());
     
+    // Accumulator for XYZ color matching
     std::vector<double> total = {0.0, 0.0, 0.0};
     
     int index = 0;
     for (int nm : wavelengths) {
-        // Absorption coefficients
+        // ============================================================
+        // ABSORPTION COEFFICIENTS (μ_a) - Based on BioSkin Paper
+        // ============================================================
+        
+        // Baseline absorption (tissue water, proteins, lipids)
         double alpha_base = 0.0244 + 8.53 * std::exp(-(nm - 154.0) / 66.2);
+        
+        // Melanin absorption spectra
         double alpha_eumelanin = 6.6e10 * std::pow(nm, -3.33);
         double alpha_pheomelanin = 2.9e14 * std::pow(nm, -4.75);
-        double alpha_carotene_epi = 2.1e-4;
-        double alpha_carotene_derm = 7.0e-5;
         
+        // Beta-carotene absorption (minor chromophore)
+        double alpha_carotene_epi = 2.1e-4;   // Epidermis
+        double alpha_carotene_derm = 7.0e-5;  // Dermis
+        
+        // Hemoglobin absorption (from your data tables)
         auto hb_coefficients = calculate_absorption_coefficient(nm);
-        double alpha_HbO2 = hb_coefficients.first;
-        double alpha_Hb = hb_coefficients.second;
+        double alpha_HbO2 = hb_coefficients.first;   // Oxygenated
+        double alpha_Hb = hb_coefficients.second;     // Deoxygenated
         
-        // Epidermis
+        // ============================================================
+        // EPIDERMIS ABSORPTION
+        // ============================================================
+        // Cm: melanin volume fraction (0-1)
+        // Bm: melanin blend (0=pheomelanin, 1=eumelanin)
+        // Note: Small amount of blood can perfuse into papillary dermis/epidermis junction
+        
         double melanin_absorption = melanin_blend * alpha_eumelanin + (1.0 - melanin_blend) * alpha_pheomelanin;
         double Uepidermis = melanin_concentration * melanin_absorption + (1.0 - melanin_concentration) * (alpha_base + alpha_carotene_epi);
         
-        // Dermis
+        // ============================================================
+        // DERMIS ABSORPTION
+        // ============================================================
+        // Ch: blood volume fraction (0-1)
+        // Bh: blood oxygenation (0=deoxygenated, 1=oxygenated)
+        
         double blood_absorption = blood_oxy * alpha_HbO2 + (1.0 - blood_oxy) * alpha_Hb;
         double Udermis = blood_concentration * (blood_absorption + alpha_carotene_derm) + (1.0 - blood_concentration) * alpha_base;
         
-        // Scattering
-        double Us_epidermis = 2.22e11 * std::pow(nm, -4.0) + 14.74 * std::pow(nm, -0.22);
-        double Us_dermis = 0.75 * Us_epidermis;
+        // ============================================================
+        // SCATTERING COEFFICIENTS (μ_s) - Based on BioSkin Paper
+        // ============================================================
+        // Rayleigh scattering (wavelength^-4) + Mie scattering (wavelength^-0.22)
         
-        // Monte Carlo
+        double Us_epidermis = 2.22e11 * std::pow(nm, -4.0) + 14.74 * std::pow(nm, -0.22);
+        double Us_dermis = 0.75 * Us_epidermis;  // Dermis has ~75% scattering of epidermis
+        
+        // ============================================================
+        // MONTE CARLO LIGHT TRANSPORT
+        // ============================================================
+        // T: epidermis thickness in cm
+        
         double reflectance = MonteCarlo(Uepidermis, Us_epidermis, Udermis, Us_dermis, epidermis_thickness);
+
+        
+        // Store result
         reflectances[index] = reflectance;
         
-        // Get D65 and color matching functions
-        double d65 = getD65Value(nm);
+        // ============================================================
+        // ACCUMULATE XYZ COLOR MATCHING FUNCTIONS
+        // ============================================================
         double x = xFit_1931(nm);
         double y = yFit_1931(nm);
         double z = zFit_1931(nm);
         
-        // Accumulate XYZ
-        total[0] += x * reflectance * d65;
-        total[1] += y * reflectance * d65;
-        total[2] += z * reflectance * d65;
+        total[0] += x * reflectance;
+        total[1] += y * reflectance;
+        total[2] += z * reflectance;
         
         index++;
     }
-    
-    // // ============================================================
-    // // NORMALIZE XYZ (AFTER the loop!)
-    // // ============================================================
-    // double normalization = 0.0;
-    // for (int nm : wavelengths) {
-    //     double y = yFit_1931(nm);
-    //     double d65 = getD65Value(nm);
-    //     normalization += y * d65;
-    // }
-
-    // normalization = normalization * 3.8;
-    
-    // total[0] = 100.0 * total[0] / normalization;
-    // total[1] = 100.0 * total[1] / normalization;
-    // total[2] = 100.0 * total[2] / normalization;
     
     // ============================================================
     // CONVERT XYZ TO sRGB
     // ============================================================
     std::vector<double> sRGB = XYZ_to_sRGB(total, step_size);
-
-    // DIAGNOSTIC - Print first sample only
-    static bool printed_once = false;
-    if (!printed_once) {
-        std::cout << "\n[FIRST SAMPLE DIAGNOSTIC]" << std::endl;
-        std::cout << "Cm=" << melanin_concentration << " Ch=" << blood_concentration << std::endl;
-        std::cout << "Normalization = " << normalization << std::endl;
-        std::cout << "XYZ: (" << total[0] << ", " << total[1] << ", " << total[2] << ")" << std::endl;
-        std::cout << "sRGB: (" << sRGB[0] << ", " << sRGB[1] << ", " << sRGB[2] << ")" << std::endl;
-        
-        if (sRGB[0] > 255 || sRGB[1] > 255 || sRGB[2] > 255) {
-            std::cout << "REJECTED: RGB > 255" << std::endl;
-        } else if (sRGB[0] < 0 || sRGB[1] < 0 || sRGB[2] < 0) {
-            std::cout << "REJECTED: RGB < 0" << std::endl;
-        } else {
-            std::cout << "ACCEPTED!" << std::endl;
-        }
-        printed_once = true;
-    }
     
     // ============================================================
     // BUILD OUTPUT ROW
     // ============================================================
     std::vector<double> row;
     
-    // Only save valid RGB values
+    // Only return valid colors (RGB values in range 0-255)
     if (!(sRGB[0] > 255 || sRGB[1] > 255 || sRGB[2] > 255)) {
-        row.push_back(melanin_concentration);
-        row.push_back(blood_concentration);
-        row.push_back(melanin_blend);
-        row.push_back(blood_oxy);
-        row.push_back(epidermis_thickness);
+        
+        row.push_back(melanin_concentration);   // Melanin concentration
+        row.push_back(blood_concentration);   // Blood concentration
+        row.push_back(melanin_blend);   // Melanin blend
+        row.push_back(blood_oxy);   // Blood oxygenation
+        row.push_back(epidermis_thickness);    // Epidermis thickness
+        // XYZ values (device-independent color space)
         row.push_back(total[0]);
         row.push_back(total[1]);
         row.push_back(total[2]);
-        row.push_back(sRGB[0]);
-        row.push_back(sRGB[1]);
-        row.push_back(sRGB[2]);
+        row.push_back(sRGB[0]); // Red
+        row.push_back(sRGB[1]); // Green
+        row.push_back(sRGB[2]); // Blue
     }
     
     return row;
 }
-
-
 
 std::vector<double> generateSequence(double start, double end, int numSamples, double root) {
     std::vector<double> values;
@@ -459,10 +446,7 @@ void ProcessAndWriteBioSkin(std::ofstream& outputFile,double melanin_concentrati
     //std::cout << "cm: " << cm << ", ch: " << ch << ", bm: " << bm << ", bh: " << bh << ", t: " << t << " \n" << std::endl;
     mtx.unlock();
     row.clear();
-    size_t done = ++completedTasks;
-    if (done % 1000 == 0) {
-        std::cout << "[PROGRESS] Completed tasks: " << done << std::endl;
-    }
+
 }
 void worker() {
     while (true) {
@@ -485,54 +469,36 @@ void worker() {
 }
 
 int main() {
-
-    // Test D65 lookup
-    std::cout << "Testing D65 lookup:" << std::endl;
-    std::cout << "D65 at 380nm: " << getD65Value(380) << std::endl;
-    std::cout << "D65 at 555nm: " << getD65Value(555) << std::endl;
-    std::cout << "D65 at 780nm: " << getD65Value(780) << std::endl;
-
     double step_size = 5;
     int numSamples = 15;
     
     // Generate parameter ranges
-    std::vector<double> CmValues = generateSequence(0.005, 0.40, 51, 2);  // melanin concentration
-    std::vector<double> ChValues = generateSequence(0.001, 0.0225, 51, 2);  // blood concentration
-    std::vector<double> BmValues = generateSequence(0.001, 1.0, 5, 2);    // melanin blend
-    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 11, 1); // blood oxygenation (RENAMED & realistic range!)
-    std::vector<double> TValues = generateSequence(0.005, 0.025, 4, 1);   // epidermis thickness in cm
-
-   DBG("Cm range: " << CmValues.front() << " -> " << CmValues.back() 
-    << " (" << CmValues.size() << " samples)");
-
-    DBG("Ch range: " << ChValues.front() << " -> " << ChValues.back() 
-        << " (" << ChValues.size() << " samples)");
-
-    DBG("Bm range: " << BmValues.front() << " -> " << BmValues.back());
-
-    DBG("BloodOxy range: " << BloodOxyValues.front() << " -> " 
-        << BloodOxyValues.back());
-
-    DBG("T range: " << TValues.front() << " -> " << TValues.back());
-
+    // std::vector<double> CmValues = generateSequence(0.001, 1.0, 51, 3);  // melanin concentration
+    // std::vector<double> ChValues = generateSequence(0.001, 1.0, 51, 4);  // blood concentration
+    // std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);    // melanin blend
+    // std::vector<double> BloodOxyValues = generateSequence(0.6, 0.95, 11, 1); // blood oxygenation (RENAMED & realistic range!)
+    // std::vector<double> TValues = generateSequence(0.01, 0.25, 4, 1);   // epidermis thickness in cm
     
-     
+    //Generate parameter ranges
+    std::vector<double> CmValues = generateSequence(0.005, 0.5, 51, 2);  // melanin concentration Cm
+    std::vector<double> ChValues = generateSequence(0.001, 0.32, 51, 2);  // blood concentration Ch
+    std::vector<double> BmValues = generateSequence(0.001, 1.0, 5, 2);    // melanin blend bm
+    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 11, 1); // blood oxygenation Bh
+    std::vector<double> TValues = generateSequence(0.005, 0.025, 4, 1);   // epidermis thickness in cm
     std::cout << "Size of cartesian product: " << 
         CmValues.size() * ChValues.size() * BmValues.size() * 
         BloodOxyValues.size() * TValues.size() << std::endl;
     
-    std::string outputFilename = "lut_rgb_trial_1.csv";
+    std::string outputFilename = "lut_rgb_trial_values.csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
     auto start = std::chrono::high_resolution_clock::now();
 
-    WriteHeaderToCSV(outputFile);
+    WriteHeaderToCSVBio(outputFile);
 
     // Thread pool setup
     const int numThreads = std::thread::hardware_concurrency();
-    DBG("Hardware threads available: " << numThreads);
-
     std::vector<std::thread> workers;
 
     for (int i = 0; i < numThreads; i++) {
@@ -580,6 +546,30 @@ int main() {
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -649,3 +639,5 @@ int main() {
 //     return 0;
 
 // }
+
+

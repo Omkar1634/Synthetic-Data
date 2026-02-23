@@ -95,7 +95,7 @@ double zFit_1931(double wave)
 double gamma_correction(double C) {
     double abs_C = std::abs(C);
     if (abs_C > 0.0031308) {
-        return 1.055 * std::pow(abs_C, 1.0 / 2.2) - 0.055;
+        return 1.055 * std::pow(abs_C, 1.0 / 2.4) - 0.055;
     }
     else {
         return 12.92 * C;
@@ -103,13 +103,13 @@ double gamma_correction(double C) {
 }
 
 std::vector<double> XYZ_to_sRGB(std::vector<double> xyz, int step_size) {
-    // double x = xyz[0]/step_size;
-    // double y = xyz[1]/step_size;
-    // double z = xyz[2]/step_size;
+    double x = xyz[0]/step_size;
+    double y = xyz[1]/step_size;
+    double z = xyz[2]/step_size;
 
-    double x = xyz[0];
-    double y = xyz[1];
-    double z = xyz[2];
+    // double x = xyz[0];
+    // double y = xyz[1];
+    // double z = xyz[2];
 
     std::vector<std::vector<double>> mat3x3 = {
         {3.2406, -1.5372, -0.4986},
@@ -121,10 +121,8 @@ std::vector<double> XYZ_to_sRGB(std::vector<double> xyz, int step_size) {
     double g = x * mat3x3[1][0] + y * mat3x3[1][1] + z * mat3x3[1][2];
     double b = x * mat3x3[2][0] + y * mat3x3[2][1] + z * mat3x3[2][2];
 
-    std::cout << "[DEBUG] r before gamma: " << r << std::endl;
     double r_gamma = gamma_correction(r);
-    std::cout << "[DEBUG] r after gamma: " << r_gamma << std::endl;
-    std::cout << "[DEBUG] r final: " << (r_gamma * 255.0) << std::endl;
+  
     g = gamma_correction(g) * 255.0;
     b = gamma_correction(b) * 255.0;
 
@@ -196,10 +194,24 @@ void WriteHeaderToCSV(std::ofstream& file)
 {
     //remove all white space and seperate by commas
     //Cm,Ch,Bm,Bh,T,sR,sG,sB
-    // file << "Cm,Ch,Bm,Bh,T,sR,sG,sB\n";
-    file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),X,Y,Z,sR,sG,sB\n";
+    file << "Cm,Ch,Bm,Bh,T,sR,sG,sB\n";
     
 }
+
+
+void WriteHeaderToCSVBio(std::ofstream& file)
+{
+    // Updated header with XYZ values before sRGB conversion
+    file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),X,Y,Z,sR,sG,sB\n";
+}
+// void WriteHeaderToCSV(std::ofstream& file)
+// {
+//     //remove all white space and seperate by commas
+//     //Cm,Ch,Bm,Bh,T,sR,sG,sB
+//     // file << "Cm,Ch,Bm,Bh,T,sR,sG,sB\n";
+//     file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),X,Y,Z,sR,sG,sB\n";
+    
+// }
 
 
 

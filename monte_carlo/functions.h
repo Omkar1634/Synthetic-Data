@@ -755,6 +755,8 @@ std::vector<double> Get_RGB(std::vector<double> wavelengths, std::vector<double>
 
 void WriteRowToCSV(std::ofstream& file, const std::vector<double>& row);
 void WriteHeaderToCSV(std::ofstream& file);
+void WriteHeaderToCSVBio(std::ofstream& file);
+
 std::pair<double, double> calculate_absorption_coefficient(double wavelength);
 
 // Assign CTCAE grade based on blood volume (erythema)
