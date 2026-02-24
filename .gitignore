@@ -1,0 +1,81 @@
+# Image file formats
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.CR3
+
+# Binary and executable files
+*.exe
+*.dll
+*.so
+*.o
+*.a
+*.obj
+*.dylib
+*.bin
+*.out
+*.pkl
+
+Archives (uncomment if needed)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Audio and video files
+*.mp3
+*.mp4
+*.avi
+*.wav
+*.flac
+*.mkv
+*.mov
+
+# Disk Images
+*.iso
+*.img
+
+Document formats (uncomment if needed)
+*.doc
+*.docx
+*.pdf
+*.rtf
+
+Large data files (uncomment if needed)
+*.csv
+*.dat
+*.dta
+*.hdf5
+
+# Others (add as needed)
+*.tmp
+*.log
+*.cache
+
+# And so on for other large file formats or temp files
+
+# Ignore all files in a directory called 'bin' or 'obj'
+bin/
+obj/
+
+# Add here other directories or file patterns as needed.
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE settings
+.vscode/
+
+# Project-specific directories
+py_autoencoder/Data/
+py_autoencoder/checkpoints/
+py_autoencoder/results/
+images
+cpp_inference
+README.md
