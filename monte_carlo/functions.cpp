@@ -95,6 +95,7 @@ double zFit_1931(double wave)
 double gamma_correction(double C) {
     double abs_C = std::abs(C);
     if (abs_C > 0.0031308) {
+        // FIXED: Changed from 1/2.2 to 1/2.4 (correct sRGB standard)
         return 1.055 * std::pow(abs_C, 1.0 / 2.4) - 0.055;
     }
     else {
@@ -103,40 +104,38 @@ double gamma_correction(double C) {
 }
 
 std::vector<double> XYZ_to_sRGB(std::vector<double> xyz, int step_size) {
-    double x = xyz[0]/step_size;
-    double y = xyz[1]/step_size;
-    double z = xyz[2]/step_size;
+    // CRITICAL FIX: Divide by 100 to convert from percentage scale (0-100) 
+    // to fraction scale (0-1) that sRGB matrix expects
+    double x = xyz[0] / 100.0;  // ← ADDED /100.0
+    double y = xyz[1] / 100.0;  // ← ADDED /100.0
+    double z = xyz[2] / 100.0;  // ← ADDED /100.0
 
-    // double x = xyz[0];
-    // double y = xyz[1];
-    // double z = xyz[2];
-
+    // sRGB transformation matrix (unchanged)
     std::vector<std::vector<double>> mat3x3 = {
         {3.2406, -1.5372, -0.4986},
         {-0.9689, 1.8758, 0.0415},
         {0.0557, -0.204, 1.057}
     };
 
+    // Matrix multiplication (unchanged)
     double r = x * mat3x3[0][0] + y * mat3x3[0][1] + z * mat3x3[0][2];
     double g = x * mat3x3[1][0] + y * mat3x3[1][1] + z * mat3x3[1][2];
     double b = x * mat3x3[2][0] + y * mat3x3[2][1] + z * mat3x3[2][2];
 
-    double r_gamma = gamma_correction(r);
-  
+    // Apply gamma correction (unchanged)
+    r = gamma_correction(r) * 255.0;
     g = gamma_correction(g) * 255.0;
     b = gamma_correction(b) * 255.0;
 
-    // Round to 2 decimal places
+    // Round to 3 decimal places (unchanged)
     r = std::round(r * 1000.0) / 1000.0;
     g = std::round(g * 1000.0) / 1000.0;
     b = std::round(b * 1000.0) / 1000.0;
 
-    // Vectorized version
+    // Return RGB values
     std::vector<double> sRGB = {r, g, b};
-
     return sRGB;
 }
-
 std::vector<double> Get_RGB(std::vector<double> wavelengths, std::vector<double> reflectances, int step_size) {
     std::vector<double> total = { 0.0, 0.0, 0.0 };
     int index = 0;
@@ -181,6 +180,30 @@ double getD65Value(int wavelength) {
     }
 }
 
+double getD50Value(int wavelength) {
+    // Binary search or direct lookup
+    for (const auto& entry : D50_ILLUMINANT) {
+        if (entry.first == wavelength) {
+            return entry.second;
+        }
+    }
+    
+    // Linear interpolation if wavelength not found
+    for (size_t i = 0; i < D50_ILLUMINANT.size() - 1; ++i) {
+        if (D50_ILLUMINANT[i].first <= wavelength && wavelength <= D50_ILLUMINANT[i+1].first) {
+            double lambda1 = D50_ILLUMINANT[i].first;
+            double lambda2 = D50_ILLUMINANT[i+1].first;
+            double value1 = D50_ILLUMINANT[i].second;
+            double value2 = D50_ILLUMINANT[i+1].second;
+            
+            double t = (wavelength - lambda1) / (lambda2 - lambda1);
+            return value1 + t * (value2 - value1);
+        }
+    }
+    
+    return 0.0; // Outside range
+}
+
 void WriteRowToCSV(std::ofstream& file, const std::vector<double>& row) {
     for (size_t i = 0; i < row.size(); ++i) {
         file << row[i];
@@ -198,32 +221,11 @@ void WriteHeaderToCSV(std::ofstream& file)
     
 }
 
-
 void WriteHeaderToCSVBio(std::ofstream& file)
 {
     // Updated header with XYZ values before sRGB conversion
     file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),X,Y,Z,sR,sG,sB\n";
 }
-// void WriteHeaderToCSV(std::ofstream& file)
-// {
-//     //remove all white space and seperate by commas
-//     //Cm,Ch,Bm,Bh,T,sR,sG,sB
-//     // file << "Cm,Ch,Bm,Bh,T,sR,sG,sB\n";
-//     file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),X,Y,Z,sR,sG,sB\n";
-    
-// }
-
-
-
-
-// void WriteHeaderToCSV(std::ofstream& file)
-// {
-//     // Updated header with CTCAE metadata
-//     file << "sample_id,fitzpatrick_type,toxicity_type,";
-//     file << "Cm,Ch,Bm,Bh,T,";
-//     file << "baseline_Cm,baseline_Ch,";
-//     file << "ctcae_grade,sR,sG,sB\n";
-// }
 
 std::pair<double, double> calculate_absorption_coefficient(double wavelength) {
     // Check if wavelength matches any of the known values

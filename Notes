@@ -2,4 +2,3 @@ Compile both files together :    g++ main.cpp functions.cpp -o monte_carlo.exe
 Run the program :     .\monte_carlo.exe
 
 
-

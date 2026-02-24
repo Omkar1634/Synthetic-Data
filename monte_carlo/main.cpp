@@ -214,72 +214,7 @@ std::vector<double> generateArray(double a, double b, double s, bool print_resul
 }
     
 
-std::vector<double> CalculateReflectanceRow(double Cm, double Ch, double Bm, double Bh, double T) {
-    // 380 to 780
-    int step_size = 10;
-    std::vector<double> wavelengths = generateArray(380, 780, step_size, false);
 
-    std::vector<double> reflectances(wavelengths.size());
-
-    //total
-    std::vector<double> total = { 0.0, 0.0, 0.0 };
-    int index = 0;
-    for (int nm : wavelengths) {
-        double alpha_base = 0.0244 + 8.53 * std::exp(-(nm - 154) / 66.2); // baseline absorption coefficient (Epidermis)
-        double alpha_em = 6.6 * std::pow(10, 10) * std::pow(nm, -3.33);  // eumelanin  absorption coefficient (Epidermis)
-        double alpha_pm = 2.9 * std::pow(10, 14) * std::pow(nm, -4.75); // pheomelanin  absorption coefficient (Epidermis)
-        // Calculate alpha_oxy and alpha_deoxy using appropriate data source
-        // double alpha_oxy = oxy_hb[index].second;
-        // double alpha_deoxy = deoxy_hb[index].second;
-        auto coefficients = calculate_absorption_coefficient(nm);
-        double gammaOxy = coefficients.first;
-        double gammaDeoxy = coefficients.second;
-        //double A = Bh*gammaOxy + (1 - Bh)*gammaDeoxy;
-
-        int wl = static_cast<int>(nm);
-        //using 
-        double epidermis = Cm * (Bm * alpha_em + (1 - Bm) * alpha_pm) + (1 - Cm) * alpha_base;
-        //alpha_derm_total = Ch*(Bh*alpha_oxy + (1-Bh)*alpha_deoxy) + (1-Ch)*self.get_alpha_base(wl)
-        double dermis = Ch *(Bh*gammaOxy + (1 - Bh)*gammaDeoxy) + (1 - Ch)*alpha_base;
-        //double dermis2 = Ch * (Bh * gammaOxy + (1 - Bh) * gemmaDeoxy) + (1 - Ch) * alpha_base;
-        //double dermis = Ch * (A + (1 - Ch) * alpha_base);
-        double scattering_epidermis = 14.74 * std::pow(nm, -0.22) + 2.22 * std::pow(10, 11) * std::pow(nm, -4.0);
-        double scattering_dermis = 0.75 * scattering_epidermis;
-        // Call MonteCarlo function here and store reflectance values
-        double reflectance = MonteCarlo(epidermis, scattering_epidermis, dermis, scattering_dermis, T);
-        wavelengths[index] = nm;
-        reflectances[index] = reflectance;
-        double x =  xFit_1931(nm);
-        double y =  yFit_1931(nm);
-        double z =  zFit_1931(nm);
-        double XYZ [3] = {x, y, z};
-
-        total[0] += x*reflectance;
-        total[1] += y*reflectance;
-        total[2] += z*reflectance;
-        index++;
-        //std::cout << "Total: " << total[0] << ", " << total[1] << ", " << total[2] << std::endl;
-    }
-    std::vector<double> sRGB0 = XYZ_to_sRGB(total, step_size);
-    std::vector<double> row;
-    if (!(sRGB0[0] > 255 || sRGB0[1] > 255 || sRGB0[2] > 255)) {
-        row.push_back(Cm);
-        row.push_back(Ch);
-        row.push_back(Bm);
-        row.push_back(Bh);
-        row.push_back(T);
-        row.push_back(sRGB0[0]);
-        row.push_back(sRGB0[1]);
-        row.push_back(sRGB0[2]);
-        total.clear();
-        sRGB0.clear();
-        return row;
-    }
-    else {
-        row.clear();
-        return row;
-    }
-}
 
 std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fraction of melanin in epidermis
     double blood_concentration,    // Ch: Volume fraction of blood in dermis
@@ -354,6 +289,8 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         
         // Store result
         reflectances[index] = reflectance;
+
+        double d65 = getD65Value(nm);
         
         // ============================================================
         // ACCUMULATE XYZ COLOR MATCHING FUNCTIONS
@@ -362,12 +299,27 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         double y = yFit_1931(nm);
         double z = zFit_1931(nm);
         
-        total[0] += x * reflectance;
-        total[1] += y * reflectance;
-        total[2] += z * reflectance;
-        
+        // ACCUMULATE WITH D65 AND STEP_SIZE (CRITICAL!)
+        total[0] += x * reflectance * d65 * step_size;
+        total[1] += y * reflectance * d65 * step_size;
+        total[2] += z * reflectance * d65 * step_size;
         index++;
     }
+    
+    // ============================================================
+    // STEP 2: NORMALIZE XYZ (NEW!)
+    // ============================================================
+    double normalization = 0.0;
+    for (int nm : wavelengths) {
+        double y = yFit_1931(nm);
+        double d65 = getD65Value(nm);
+        normalization += y * d65 * step_size;
+    }
+    
+    // Scale to Y=100 for perfect white
+    total[0] = 100.0 * total[0] / normalization;
+    total[1] = 100.0 * total[1] / normalization;
+    total[2] = 100.0 * total[2] / normalization;
     
     // ============================================================
     // CONVERT XYZ TO sRGB
@@ -423,18 +375,7 @@ std::queue<std::function<void()>> tasks;
 
 bool finished = false;
 
-void ProcessAndWrite(std::ofstream& outputFile, double cm, double ch, double bm, double bh, double t) {
-    std::vector<double> row = CalculateReflectanceRow(cm, ch, bm, bh, t);
-    if (row.empty()) {
-		return;
-	}
-    mtx.lock();
-    WriteRowToCSV(outputFile, row);
-    //std::cout << "cm: " << cm << ", ch: " << ch << ", bm: " << bm << ", bh: " << bh << ", t: " << t << " \n" << std::endl;
-    mtx.unlock();
-    row.clear();
 
-}
 
 void ProcessAndWriteBioSkin(std::ofstream& outputFile,double melanin_concentration,double blood_concentration,double melanin_blend,double blood_oxy,double epidermis_thickness) {
     std::vector<double> row = Bioskin( melanin_concentration, blood_concentration, melanin_blend, blood_oxy, epidermis_thickness );   
@@ -472,24 +413,34 @@ int main() {
     double step_size = 5;
     int numSamples = 15;
     
-    // Generate parameter ranges
-    // std::vector<double> CmValues = generateSequence(0.001, 1.0, 51, 3);  // melanin concentration
-    // std::vector<double> ChValues = generateSequence(0.001, 1.0, 51, 4);  // blood concentration
-    // std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);    // melanin blend
-    // std::vector<double> BloodOxyValues = generateSequence(0.6, 0.95, 11, 1); // blood oxygenation (RENAMED & realistic range!)
-    // std::vector<double> TValues = generateSequence(0.01, 0.25, 4, 1);   // epidermis thickness in cm
     
     //Generate parameter ranges
-    std::vector<double> CmValues = generateSequence(0.005, 0.5, 51, 2);  // melanin concentration Cm
-    std::vector<double> ChValues = generateSequence(0.001, 0.32, 51, 2);  // blood concentration Ch
-    std::vector<double> BmValues = generateSequence(0.001, 1.0, 5, 2);    // melanin blend bm
-    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 11, 1); // blood oxygenation Bh
-    std::vector<double> TValues = generateSequence(0.005, 0.025, 4, 1);   // epidermis thickness in cm
+    std::vector<double> CmValues = generateSequence(0.001, 0.5, 40, 2);  // melanin concentration Cm
+    std::vector<double> ChValues = generateSequence(0.001, 0.32, 40, 2);  // blood concentration Ch
+    std::vector<double> BmValues = generateSequence(0.000, 1.0, 5, 2);    // melanin blend bm
+    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 15, 1); // blood oxygenation Bh
+    std::vector<double> TValues = generateSequence(0.01, 0.25, 7, 1);   // epidermis thickness in cm
+
+//    FOR DEBUGGING - Fast generation to verify the pipeline works
+//     std::vector<double> CmValues = generateSequence(0.01, 0.50, 15, 2);      // 1% to 50%
+//     std::vector<double> ChValues = generateSequence(0.002, 0.20, 10, 2);     // 0.2% to 20%
+//     std::vector<double> BmValues = generateSequence(0.5, 1.0, 3, 2);         // 50% to 100%
+//     std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 5, 1); // 60% to 98%
+//     std::vector<double> TValues = generateSequence(0.005, 0.020, 3, 1);      // 50μm to 200μm
+
+    // // FINAL RANGES FOR FULL LUT GENERATION 
+    // std::vector<double> CmValues = generateSequence(0.01, 0.50, 30, 2);     // 30 samples
+    // std::vector<double> ChValues = generateSequence(0.002, 0.20, 20, 2);    // 20 samples  
+    // std::vector<double> BmValues = generateSequence(0.5, 1.0, 5, 2);        // 5 samples
+    // std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 7, 1); // 7 samples
+    // std::vector<double> TValues = generateSequence(0.005, 0.020, 4, 1);     // 4 samples
+
+   
     std::cout << "Size of cartesian product: " << 
         CmValues.size() * ChValues.size() * BmValues.size() * 
         BloodOxyValues.size() * TValues.size() << std::endl;
     
-    std::string outputFilename = "lut_rgb_trial_values.csv";
+    std::string outputFilename = "lut_rgb_BaseLine.csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
@@ -566,78 +517,5 @@ int main() {
 
 
 
-
-
-
-
-
-
-
-
-
-// int main() {
-//     double step_size = 5;
-//     int numSamples = 15;
-//     std::vector<double> CmValues = generateSequence(0.001, 1.0, numSamples, 3); //  melanin concentration
-//     std::vector<double> ChValues = generateSequence(0.001, 1.0, numSamples, 4); //  hemoglobin concentration
-//     std::vector<double> BmValues = generateSequence(0.0, 1.0, numSamples, 2); // melanin blend
-//     std::vector<double> BhValues = generateSequence(0.0, 1.0, numSamples, 1);// hemoglobin blend
-//     std::vector<double> TValues = generateSequence(0.01, 0.25, numSamples, 1); // thickness of skin in cm
-//     std::cout << "size of cartesian product: " << CmValues.size() * ChValues.size() * BmValues.size() * BhValues.size() * TValues.size()<< std::endl;
-//     std::string outputFilename = "lut_rgb.csv";
-//     std::ofstream outputFile(outputFilename);
-
-//     //start timer
-//     auto start = std::chrono::high_resolution_clock::now();
-//     int count = 0;
-
-//     WriteHeaderToCSV(outputFile);
-
-//     const int numThreads = std::thread::hardware_concurrency();
-//     std::vector<std::thread> workers;
-
-//     for (int i = 0; i < numThreads; i++) {
-//         workers.push_back(std::thread(worker));
-//     }
-
-//     for (auto cm : CmValues) {
-//         for (auto ch : ChValues) {
-//             for (auto bm : BmValues) {
-//                 for (auto bh : BhValues) {
-//                     for (auto t : TValues) {
-//                             auto task = [&, cm, ch, bm, bh, t]() {
-//                                 ProcessAndWrite(outputFile, cm, ch, bm, bh, t);
-//                             };
-
-//                         {
-//                             std::unique_lock<std::mutex> lock(task_mtx);
-//                             tasks.push(task);
-//                             cv.notify_one();
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     {
-//         std::unique_lock<std::mutex> lock(task_mtx);
-//         finished = true;
-//         cv.notify_all();
-//     }
-
-//     for (auto& worker : workers) {
-//         worker.join();
-//     }
-
-//     outputFile.close();
-//     auto end = std::chrono::high_resolution_clock::now();
-//     std::chrono::duration<double> elapsed = end - start;
-//     std::cout << "elapsed time: " << elapsed.count() << " seconds" << std::endl;
-
-//     outputFile.close();
-//     return 0;
-
-// }
 
 
