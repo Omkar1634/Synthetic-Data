@@ -7,6 +7,7 @@
 *.tiff
 *.ico
 *.CR3
+*.exr
 
 # Binary and executable files
 *.exe
@@ -44,6 +45,7 @@ Document formats (uncomment if needed)
 *.docx
 *.pdf
 *.rtf
+*.txt
 
 Large data files (uncomment if needed)
 *.csv
