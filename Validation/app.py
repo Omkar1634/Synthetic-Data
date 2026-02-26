@@ -34,6 +34,7 @@ import torch
 import cv2
 from plotly.subplots import make_subplots
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+import matplotlib.pyplot as plt
 
 # Import functions from the validation script
 from latent_space_validation import (
@@ -45,7 +46,14 @@ from latent_space_validation import (
     create_distribution_plots,
     create_correlation_heatmap
 )
-
+from delta_e import (
+    calculate_delta_e,
+    analyze_delta_e_results,
+    assess_quality,
+    create_delta_e_visualization,
+    create_delta_e_histogram,
+    generate_delta_e_report
+)
 
 # ============================================================================
 # FULL IMAGE INFERENCE FUNCTIONS
@@ -987,6 +995,17 @@ if st.session_state.validation_complete and st.session_state.results:
         st.header("Full Image Parameter Maps")
         st.markdown("Automatically processed sample images showing parameter distributions")
         
+        
+        # Auto-calculate Delta E (runs once)
+        if 'delta_e_results' not in st.session_state:
+            delta_e_results = []
+            for result in st.session_state.full_image_results:
+                de_result = calculate_delta_e(result['original'], result['recovered'])
+                de_result['image_name'] = result['image_name']
+                delta_e_results.append(de_result)
+            st.session_state.delta_e_results = delta_e_results
+            st.session_state.delta_e_summary = analyze_delta_e_results(delta_e_results)
+        
         # Create tabs for each processed image
         if len(st.session_state.full_image_results) == 1:
             # Single image - no tabs needed
@@ -1024,7 +1043,7 @@ if st.session_state.validation_complete and st.session_state.results:
             tab_names = [r['image_name'] for r in st.session_state.full_image_results]
             tabs = st.tabs(tab_names)
             
-            for tab, result in zip(tabs, st.session_state.full_image_results):
+            for idx, (tab, result) in enumerate(zip(tabs, st.session_state.full_image_results)):
                 with tab:
                     # Metrics
                     col1, col2, col3, col4 = st.columns(4)
@@ -1051,7 +1070,7 @@ if st.session_state.validation_complete and st.session_state.results:
                         with col2:
                             st.markdown("**Reconstructed**")
                             st.image(result['recovered'], use_column_width=True)
-                        
+
                         # Row 2: Cm and Ch
                         col1, col2 = st.columns(2)
                         with col1:
@@ -1060,15 +1079,14 @@ if st.session_state.validation_complete and st.session_state.results:
                             fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                             fig.update_xaxes(showticklabels=False)
                             fig.update_yaxes(showticklabels=False)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key=f"tab{idx}_cm_{result['image_name']}")
                         with col2:
                             st.markdown("**Ch (Blood)**")
                             fig = go.Figure(data=go.Heatmap(z=np.flipud(result['param_maps'][:, :, 1]), colorscale='Viridis'))
                             fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                             fig.update_xaxes(showticklabels=False)
                             fig.update_yaxes(showticklabels=False)
-                            st.plotly_chart(fig, use_container_width=True)
-
+                            st.plotly_chart(fig, use_container_width=True, key=f"tab{idx}_ch_{result['image_name']}")
                         # Row 3: Error and Bm
                         col1, col2 = st.columns(2)
                         with col1:
@@ -1078,15 +1096,14 @@ if st.session_state.validation_complete and st.session_state.results:
                             fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                             fig.update_xaxes(showticklabels=False)
                             fig.update_yaxes(showticklabels=False)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key=f"tab{idx}_error_{result['image_name']}")
                         with col2:
                             st.markdown("**Bm (Melanin Blend)**")
                             fig = go.Figure(data=go.Heatmap(z=np.flipud(result['param_maps'][:, :, 2]), colorscale='Viridis'))
                             fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                             fig.update_xaxes(showticklabels=False)
                             fig.update_yaxes(showticklabels=False)
-                            st.plotly_chart(fig, use_container_width=True)
-
+                            st.plotly_chart(fig, use_container_width=True, key=f"tab{idx}_bm_{result['image_name']}")
                         # Row 4: Bh and T
                         col1, col2 = st.columns(2)
                         with col1:
@@ -1095,96 +1112,88 @@ if st.session_state.validation_complete and st.session_state.results:
                             fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                             fig.update_xaxes(showticklabels=False)
                             fig.update_yaxes(showticklabels=False)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True, key=f"tab{idx}_bh_{result['image_name']}")
                         with col2:
                             st.markdown("**T (Thickness)**")
                             fig = go.Figure(data=go.Heatmap(z=np.flipud(result['param_maps'][:, :, 4]), colorscale='Viridis'))
                             fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                             fig.update_xaxes(showticklabels=False)
                             fig.update_yaxes(showticklabels=False)
-                            st.plotly_chart(fig, use_container_width=True)
-
+                            st.plotly_chart(fig, use_container_width=True, key=f"tab{idx}_t_{result['image_name']}")
 
                     
                     # Statistics
                     with st.expander("📊 Parameter Statistics"):
                         stats_df = create_statistics_table(result['param_maps'])
                         st.dataframe(stats_df, use_container_width=True, hide_index=True)
-    
-    st.markdown("---")
-    
-    
-    # Download Results
-    st.subheader("💾 Download Results")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-    # Download JSON
-    
-        # Convert numpy types to JSON-serializable types
-        def convert_to_serializable(obj):
-            if isinstance(obj, dict):
-                return {k: convert_to_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_to_serializable(item) for item in obj]
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, (np.integer, np.int64, np.int32)):
-                return int(obj)
-            elif isinstance(obj, (np.floating, np.float64, np.float32)):
-                return float(obj)
-            elif isinstance(obj, np.bool_):
-                return bool(obj)
-            else:
-                return obj
-        
-        json_data = {
-            'statistics': stats,
-            'image_stats': image_stats,
-            'correlation_matrix': corr_matrix.tolist(),
-            'problematic_correlations': results['problematic_corrs'],
-            'timestamp': results['timestamp']
-        }
-        
-        # Convert to JSON-safe format
-        json_data_safe = convert_to_serializable(json_data)
-        
-        st.download_button(
-            label="📥 Download JSON Report",
-            data=json.dumps(json_data_safe, indent=4),
-            file_name=f"validation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json"
-        )
-    
-    with col2:
-        # Download CSV
-        df_data = []
-        for param in param_names:
-            s = stats[param]
-            df_data.append({
-                'Parameter': param,
-                'Mean': s['mean'],
-                'Std': s['std'],
-                'Min': s['min'],
-                'Max': s['max'],
-                'Bio_Plausibility_%': s['biological_plausibility_pct'],
-                'Outlier_%': s['outlier_pct'],
-                'Lower_Boundary_%': s['boundary_clustering']['lower_boundary_pct'],
-                'Upper_Boundary_%': s['boundary_clustering']['upper_boundary_pct']
-            })
-        
-        df = pd.DataFrame(df_data)
-        csv = df.to_csv(index=False)
-        
-        st.download_button(
-            label="📥 Download CSV Summary",
-            data=csv,
-            file_name=f"validation_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+                        
+                    st.header("🎨 Delta E Perceptual Accuracy")
+                    st.markdown("Measure how different colors appear to the **human eye** (not just mathematical distance)")
+                    
+                    # Info box
+                    with st.expander("ℹ️ What is Delta E?"):
+                        st.markdown("""
+                        **Delta E (CIEDE2000)** measures perceptual color difference:
+                        - **ΔE < 1.0**: Imperceptible (perfect match) ✅
+                        - **ΔE 1-2**: Perceptible only upon close inspection (excellent) ✅
+                        - **ΔE 2-10**: Perceptible at a glance (acceptable) ⚠️
+                        - **ΔE > 10**: Colors appear different (poor) ❌
+                        
+                        This is the **gold standard** for color accuracy in professional industries 
+                        (printing, cosmetics, dermatology, CGI).
+                        """)    
+                    # Delta E 
+                    if 'delta_e_results' in st.session_state:
+                        st.markdown("---")
+                        st.markdown("**🎨 Delta E**")
+                        de = st.session_state.delta_e_results[idx]
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Mean ΔE", f"{de['mean_delta_e']:.2f}")
+                        with col2:
+                            st.metric("Excellent %", f"{de['percent_excellent']:.1f}%")
+                        with col3:
+                            quality, _ = assess_quality(de['mean_delta_e'], de['percentile_95'], de['percent_excellent'])
+                            st.metric("Quality", quality)
+                        with col4:
+                            st.metric("95th %", f"{de['percentile_95']:.2f}")
+                        with st.expander("🔍 View Delta E Heatmap"):
+                            fig_de = create_delta_e_visualization(result['original'], result['recovered'], de)
+                            st.pyplot(fig_de, use_container_width=True)
+                            plt.close(fig_de)
+                        # Histogram
+                        with st.expander("📊 Delta E Distribution"):
+                            fig_hist = create_delta_e_histogram(de)  # ← Changed this
+                            st.pyplot(fig_hist, use_container_width=True)
+                            plt.close(fig_hist)
 
-
+                        # Detailed Statistics
+                        with st.expander("📈 Detailed Statistics"):
+                            stats_data = {
+                                'Metric': ['Mean', 'Median', 'Std Dev', 'Max', '95th %ile', '99th %ile'],
+                                'Value': [
+                                    f"{de['mean_delta_e']:.3f}",
+                                    f"{de['median_delta_e']:.3f}",
+                                    f"{de['std_delta_e']:.3f}",
+                                    f"{de['max_delta_e']:.3f}",
+                                    f"{de['percentile_95']:.3f}",
+                                    f"{de['percentile_99']:.3f}"
+                                ]
+                            }
+                            st.table(stats_data)
+                            
+                            quality_data = {
+                                'Quality Level': ['Imperceptible (ΔE<1)', 'Excellent (ΔE<2)', 
+                                                'Acceptable (ΔE<10)', 'Poor (ΔE≥10)'],
+                                'Percentage': [
+                                    f"{de['percent_imperceptible']:.1f}%",
+                                    f"{de['percent_excellent']:.1f}%",
+                                    f"{de['percent_acceptable']:.1f}%",
+                                    f"{de['percent_poor']:.1f}%"
+                                ]
+                            }
+                            st.table(quality_data)
+                        
 # ============================================================================
 # FOOTER
 # ============================================================================
