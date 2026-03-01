@@ -416,10 +416,10 @@ int main() {
     
     //Generate parameter ranges
     std::vector<double> CmValues = generateSequence(0.001, 0.5, 40, 2);  // melanin concentration Cm
-    std::vector<double> ChValues = generateSequence(0.001, 0.32, 40, 2);  // blood concentration Ch
-    std::vector<double> BmValues = generateSequence(0.000, 1.0, 5, 2);    // melanin blend bm
+    std::vector<double> ChValues = generateSequence(0.001, 0.8, 40, 2);  // blood concentration Ch
+    std::vector<double> BmValues = generateSequence(0.00, 1.0, 11, 2);    // melanin blend bm
     std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 15, 1); // blood oxygenation Bh
-    std::vector<double> TValues = generateSequence(0.01, 0.25, 7, 1);   // epidermis thickness in cm
+    std::vector<double> TValues = generateSequence(0.01, 0.32, 7, 1);   // epidermis thickness in cm
 
 //    FOR DEBUGGING - Fast generation to verify the pipeline works
 //     std::vector<double> CmValues = generateSequence(0.01, 0.50, 15, 2);      // 1% to 50%
@@ -435,12 +435,11 @@ int main() {
     // std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 7, 1); // 7 samples
     // std::vector<double> TValues = generateSequence(0.005, 0.020, 4, 1);     // 4 samples
 
-   
     std::cout << "Size of cartesian product: " << 
         CmValues.size() * ChValues.size() * BmValues.size() * 
         BloodOxyValues.size() * TValues.size() << std::endl;
     
-    std::string outputFilename = "lut_rgb_BaseLine.csv";
+    std::string outputFilename = "lut_rgb_BaseLine_1.csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers

@@ -178,8 +178,7 @@ def sample_skin_pixels(image_path, num_pixels=100):
 
 
 class Encoder(nn.Module):
-    """Encoder network: RGB (3) → Latent Parameters (5)"""
-    def __init__(self, in_dim=3, hidden_dim=256, num_layers=8, out_dim=5):
+    def __init__(self, in_dim=3, hidden_dim=75, num_layers=2, out_dim=5):
         super().__init__()
         layers = []
         for i in range(num_layers):
@@ -187,10 +186,25 @@ class Encoder(nn.Module):
             layers.append(nn.ReLU())
         self.mlp = nn.Sequential(*layers)
         self.out = nn.Linear(hidden_dim, out_dim)
+        
+        # ADD THESE LINES - match your training code!
+        self.register_buffer('param_mins', torch.tensor([0.001, 0.001, 0.0, 0.6, 0.01]))
+        self.register_buffer('param_maxs', torch.tensor([0.5, 0.32, 1.0, 0.98, 0.25]))
 
     def forward(self, x):
         x = self.mlp(x)
-        return self.out(x)
+        params = self.out(x)
+        
+        # Clamp to valid ranges
+        params_clamped = torch.zeros_like(params)
+        for i in range(5):
+            params_clamped[:, i] = torch.clamp(
+                params[:, i], 
+                self.param_mins[i], 
+                self.param_maxs[i]
+            )
+        
+        return params_clamped
 
 class Decoder(nn.Module):
     """Decoder: Parameters (5) → RGB (3)"""

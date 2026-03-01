@@ -419,25 +419,50 @@ st.sidebar.subheader("1️⃣ Model Configuration")
 BASE_CHECKPOINT_DIR = r"D:\Github\PhD Code\Synthetic Data\NN\checkpoints"
 BASE_IMAGE_DIR = r"D:\Github\PhD Code\Synthetic Data\Testing_Data"
 
-# Auto-detect checkpoint folders
-if os.path.exists(BASE_CHECKPOINT_DIR):
-    checkpoint_folders = [f.name for f in Path(BASE_CHECKPOINT_DIR).iterdir() if f.is_dir()]
-    checkpoint_folders.sort(reverse=True)  # Most recent first
-    
-    if checkpoint_folders:
+base_dir = Path(BASE_CHECKPOINT_DIR)
+
+if base_dir.exists():
+
+    checkpoint_files = []
+
+    for run_folder in base_dir.iterdir():
+        if run_folder.is_dir():
+
+            # 1️⃣ Check directly inside
+            direct_best = run_folder / "best.pt"
+            if direct_best.exists():
+                checkpoint_files.append(direct_best)
+
+            # 2️⃣ Check one level down
+            for subfolder in run_folder.iterdir():
+                if subfolder.is_dir():
+                    nested_best = subfolder / "best.pt"
+                    if nested_best.exists():
+                        checkpoint_files.append(nested_best)
+
+    # Sort by modification time
+    checkpoint_files.sort(
+        key=lambda x: x.stat().st_mtime,
+        reverse=True
+    )
+
+    if checkpoint_files:
         selected_checkpoint = st.sidebar.selectbox(
-            "Select Checkpoint Run",
-            checkpoint_folders,
-            help="Choose from available training runs"
+            "Select Checkpoint",
+            checkpoint_files,
+            format_func=lambda x: str(x.relative_to(base_dir))
         )
-        checkpoint_path = os.path.join(BASE_CHECKPOINT_DIR, selected_checkpoint, "best.pt")
+
+        checkpoint_path = str(selected_checkpoint)
+        st.sidebar.success(f"Using: {selected_checkpoint.name}")
+
     else:
-        st.sidebar.warning("No checkpoint folders found!")
+        st.sidebar.warning("No best.pt files found!")
         checkpoint_path = st.sidebar.text_input("Checkpoint Path", value="")
+
 else:
     st.sidebar.warning(f"Checkpoint directory not found: {BASE_CHECKPOINT_DIR}")
     checkpoint_path = st.sidebar.text_input("Checkpoint Path", value="")
-
 # Show selected path
 st.sidebar.caption(f"📁 {checkpoint_path}")
 
@@ -477,21 +502,6 @@ if st.sidebar.button("Load Model", type="primary", use_container_width=True):
             encoder_state = {k.replace('encoder.', ''): v for k, v in state_dict.items() if k.startswith('encoder.')}
             encoder.load_state_dict(encoder_state)
             encoder.eval()
-            
-            # # Create decoder (NEW!)
-            # class Decoder(nn.Module):
-            #     def __init__(self, in_dim=5, hidden_dim=num_neurons, num_layers=num_layers, out_dim=3):
-            #         super().__init__()
-            #         layers = []
-            #         for i in range(num_layers):
-            #             layers.append(nn.Linear(in_dim if i == 0 else hidden_dim, hidden_dim))
-            #             layers.append(nn.ReLU())
-            #         self.mlp = nn.Sequential(*layers)
-            #         self.out = nn.Linear(hidden_dim, out_dim)
-
-            #     def forward(self, x):
-            #         x = self.mlp(x)
-            #         return self.out(x)
             
             decoder = Decoder(in_dim=5, hidden_dim=num_neurons, num_layers=num_layers, out_dim=3).to(device)
             
