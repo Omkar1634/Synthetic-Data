@@ -173,23 +173,23 @@ double MonteCarlo(double epi_mua, double epi_mus, double derm_mua, double derm_m
         }
     }
     double total_reflection = 0.0;
-    double max = 0.0;
-    for (int i = 0; i < Nbinsp1; i++) {
-        if (ReflBin[i] > max)
-        {
-            max = ReflBin[i]/Nphotons;
-        }
-        // std::cout << "ReflBin[" << each << "] = " << ReflBin[each] << std::endl;
-        total_reflection += ReflBin[i] / Nphotons;
-
+    for (int i = 0; i < NR; i++) {
+    total_reflection += ReflBin[i];
     }
-    if (total_reflection > 1.0)
-    {
-	    	std :: cout << "total_reflection: " << total_reflection << std::endl;
-            std::cout << "max: " << max << std::endl;
-	}
-
-    return total_reflection;
+     // Right before returning
+    
+   // Option 1: Just return center bin (most accurate for diffuse albedo)
+    return total_reflection / Nphotons;
+   
+    // // Option 2: Area-weighted integration (better)
+    // double total_reflection = 0.0;
+    // for (int i = 0; i < NR; i++) {
+    //     double r_inner = i * dr;
+    //     double r_outer = (i + 1) * dr;
+    //     double area = PI * (r_outer * r_outer - r_inner * r_inner);
+    //     total_reflection += ReflBin[i] * area;
+    // }
+    // return total_reflection / (Nphotons * PI * radial_size * radial_size);
 }
 std::vector<float> generateDistribution(float minVal, float maxVal, int numSamples, double exponent = 1.0) {
     std::vector<float> values;
@@ -226,7 +226,10 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
     int step_size = 5;
     std::vector<double> wavelengths = generateArray(380, 800, step_size, false);
     std::vector<double> reflectances(wavelengths.size());
-    
+     std::vector<double> mua_epi_values;   // Store all wavelengths
+    std::vector<double> mus_epi_values;
+    std::vector<double> mua_derm_values;
+    std::vector<double> mus_derm_values;
     // Accumulator for XYZ color matching
     std::vector<double> total = {0.0, 0.0, 0.0};
     
@@ -276,9 +279,20 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         // ============================================================
         // Rayleigh scattering (wavelength^-4) + Mie scattering (wavelength^-0.22)
         
-        double Us_epidermis = 2.22e11 * std::pow(nm, -4.0) + 14.74 * std::pow(nm, -0.22);
+        // double Us_epidermis = 2.22e11 * std::pow(nm, -4.0) + 14.74 * std::pow(nm, -0.22);
+
+        double lambda_normalized = nm / 500.0;  // Normalize to 500nm
+        double rayleigh_term = 0.48 * pow(lambda_normalized, -4.0);
+        double mie_term = 0.52 * pow(lambda_normalized, -0.22);  // (1 - fRay) = 0.52
+        double Us_epidermis = 36.4 * (rayleigh_term + mie_term);  // Result in cm⁻¹
         double Us_dermis = 0.75 * Us_epidermis;  // Dermis has ~75% scattering of epidermis
         
+
+        // STORE them before Monte Carlo
+        mua_epi_values.push_back(Uepidermis);
+        mus_epi_values.push_back(Us_epidermis);
+        mua_derm_values.push_back(Udermis);
+        mus_derm_values.push_back(Us_dermis);
         // ============================================================
         // MONTE CARLO LIGHT TRANSPORT
         // ============================================================
@@ -339,6 +353,30 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         row.push_back(melanin_blend);   // Melanin blend
         row.push_back(blood_oxy);   // Blood oxygenation
         row.push_back(epidermis_thickness);    // Epidermis thickness
+
+        // Epidermis absorption (85)
+        for (double val : mua_epi_values) {
+            row.push_back(val);
+        }
+        
+        // Epidermis scattering (85)
+        for (double val : mus_epi_values) {
+            row.push_back(val);
+        }
+        
+        // Dermis absorption (85)
+        for (double val : mua_derm_values) {
+            row.push_back(val);
+        }
+        
+        // Dermis scattering (85)
+        for (double val : mus_derm_values) {
+            row.push_back(val);
+        }
+        // ===== ADD SPECTRAL REFLECTANCE VALUES (85 columns) =====
+        for (double reflectance : reflectances) {
+        row.push_back(reflectance);
+        }
         // XYZ values (device-independent color space)
         row.push_back(total[0]);
         row.push_back(total[1]);
@@ -347,6 +385,7 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         row.push_back(sRGB[1]); // Green
         row.push_back(sRGB[2]); // Blue
     }
+   
     
     return row;
 }
@@ -415,11 +454,11 @@ int main() {
     
     
     //Generate parameter ranges
-    std::vector<double> CmValues = generateSequence(0.001, 0.5, 40, 2);  // melanin concentration Cm
-    std::vector<double> ChValues = generateSequence(0.001, 0.8, 40, 2);  // blood concentration Ch
-    std::vector<double> BmValues = generateSequence(0.00, 1.0, 11, 2);    // melanin blend bm
-    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 15, 1); // blood oxygenation Bh
-    std::vector<double> TValues = generateSequence(0.01, 0.32, 7, 1);   // epidermis thickness in cm
+    std::vector<double> CmValues = generateSequence(0.001, 0.5, 10, 2);  // melanin concentration Cm
+    std::vector<double> ChValues = generateSequence(0.001, 0.32, 10, 2);  // blood concentration Ch
+    std::vector<double> BmValues = generateSequence(0.00, 1.0, 5, 2);    // melanin blend bm
+    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 7, 1); // blood oxygenation Bh
+    std::vector<double> TValues = generateSequence(0.01, 0.32, 4, 1);   // epidermis thickness in cm
 
 //    FOR DEBUGGING - Fast generation to verify the pipeline works
 //     std::vector<double> CmValues = generateSequence(0.01, 0.50, 15, 2);      // 1% to 50%
@@ -439,13 +478,13 @@ int main() {
         CmValues.size() * ChValues.size() * BmValues.size() * 
         BloodOxyValues.size() * TValues.size() << std::endl;
     
-    std::string outputFilename = "lut_rgb_BaseLine_1.csv";
+    std::string outputFilename = "lut_rgb_BaseLine_3.csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
     auto start = std::chrono::high_resolution_clock::now();
 
-    WriteHeaderToCSVBio(outputFile);
+    WriteHeaderToCSVBioWithSpectral(outputFile);
 
     // Thread pool setup
     const int numThreads = std::thread::hardware_concurrency();

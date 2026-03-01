@@ -227,6 +227,53 @@ void WriteHeaderToCSVBio(std::ofstream& file)
     file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),X,Y,Z,sR,sG,sB\n";
 }
 
+void WriteHeaderToCSVBioWithSpectral(std::ofstream& file)
+{
+    // Header with spectral reflectance data
+    file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),";
+    
+    // Add spectral columns (380-800nm in 5nm steps = 85 columns)
+    for (int wl = 380; wl <= 800; wl += 5) {
+        file << "R_" << wl << "nm,";
+    }
+    
+    // Add XYZ and sRGB columns
+    file << "X,Y,Z,sR,sG,sB\n";
+}
+
+void WriteHeaderToCSVBioWithSpectralAndOptical(std::ofstream& file)
+{
+    file << "melanin_concentration(Cm),blood_concentration(Ch),melanin_blend(Bm),BloodOxy,epidermis_thickness(T),";
+    
+    // Epidermis absorption (85 columns)
+    for (int wl = 380; wl <= 800; wl += 5) {
+        file << "mua_epi_" << wl << "nm,";
+    }
+    
+    // Epidermis scattering (85 columns)
+    for (int wl = 380; wl <= 800; wl += 5) {
+        file << "mus_epi_" << wl << "nm,";
+    }
+    
+    // Dermis absorption (85 columns)
+    for (int wl = 380; wl <= 800; wl += 5) {
+        file << "mua_derm_" << wl << "nm,";
+    }
+    
+    // Dermis scattering (85 columns)
+    for (int wl = 380; wl <= 800; wl += 5) {
+        file << "mus_derm_" << wl << "nm,";
+    }
+    
+    // Spectral reflectance (85 columns)
+    for (int wl = 380; wl <= 800; wl += 5) {
+        file << "R_" << wl << "nm,";
+    }
+    
+    // XYZ and sRGB
+    file << "X,Y,Z,sR,sG,sB\n";
+}
+
 std::pair<double, double> calculate_absorption_coefficient(double wavelength) {
     // Check if wavelength matches any of the known values
     for (size_t i = 0; i < sizeof(wavelengths) / sizeof(wavelengths[0]); ++i) {
