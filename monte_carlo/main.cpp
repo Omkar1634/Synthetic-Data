@@ -354,25 +354,25 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         row.push_back(blood_oxy);   // Blood oxygenation
         row.push_back(epidermis_thickness);    // Epidermis thickness
 
-        // Epidermis absorption (85)
-        for (double val : mua_epi_values) {
-            row.push_back(val);
-        }
+        // // Epidermis absorption (85)
+        // for (double val : mua_epi_values) {
+        //     row.push_back(val);
+        // }
         
-        // Epidermis scattering (85)
-        for (double val : mus_epi_values) {
-            row.push_back(val);
-        }
+        // // Epidermis scattering (85)
+        // for (double val : mus_epi_values) {
+        //     row.push_back(val);
+        // }
         
-        // Dermis absorption (85)
-        for (double val : mua_derm_values) {
-            row.push_back(val);
-        }
+        // // Dermis absorption (85)
+        // for (double val : mua_derm_values) {
+        //     row.push_back(val);
+        // }
         
-        // Dermis scattering (85)
-        for (double val : mus_derm_values) {
-            row.push_back(val);
-        }
+        // // Dermis scattering (85)
+        // for (double val : mus_derm_values) {
+        //     row.push_back(val);
+        // }
         // ===== ADD SPECTRAL REFLECTANCE VALUES (85 columns) =====
         for (double reflectance : reflectances) {
         row.push_back(reflectance);
@@ -390,16 +390,35 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
     return row;
 }
 
-std::vector<double> generateSequence(double start, double end, int numSamples, double root) {
+// std::vector<double> generateSequence(double start, double end, int numSamples, double root) {
+//     std::vector<double> values;
+
+//     double startRootValue = std::pow(start, 1.0 / root);
+//     double endRootValue = std::pow(end, 1.0 / root);
+//     double delta = (endRootValue - startRootValue) / (numSamples - 1);
+
+//     for (int i = 0; i < numSamples; ++i) {
+//         double valRoot = startRootValue + delta * i;
+//         values.push_back(std::pow(valRoot, root));
+//     }
+
+//     return values;
+// }
+
+std::vector<double> generateSequence(double start, double end, int numSamples, double exponent) {
     std::vector<double> values;
 
-    double startRootValue = std::pow(start, 1.0 / root);
-    double endRootValue = std::pow(end, 1.0 / root);
-    double delta = (endRootValue - startRootValue) / (numSamples - 1);
-
+    // Create uniform distribution from 0 to 1
     for (int i = 0; i < numSamples; ++i) {
-        double valRoot = startRootValue + delta * i;
-        values.push_back(std::pow(valRoot, root));
+        double uniformValue = static_cast<double>(i) / (numSamples - 1);  // Gives [0, 0.25, 0.5, 0.75, 1.0] for 5 samples
+        
+        // Apply the exponent (cubic = 3, quartic = 4)
+        double exponentiatedValue = std::pow(uniformValue, exponent);  // For cubic: x³
+        
+        // Scale from [0,1] to [start,end]
+        double scaledValue = start + (end - start) * exponentiatedValue;
+        
+        values.push_back(scaledValue);
     }
 
     return values;
@@ -454,11 +473,11 @@ int main() {
     
     
     //Generate parameter ranges
-    std::vector<double> CmValues = generateSequence(0.001, 0.5, 10, 2);  // melanin concentration Cm
-    std::vector<double> ChValues = generateSequence(0.001, 0.32, 10, 2);  // blood concentration Ch
+    std::vector<double> CmValues = generateSequence(0.01, 0.43, 30, 2);  // melanin concentration Cm
+    std::vector<double> ChValues = generateSequence(0.01, 0.04, 20, 2);  // blood concentration Ch
     std::vector<double> BmValues = generateSequence(0.00, 1.0, 5, 2);    // melanin blend bm
-    std::vector<double> BloodOxyValues = generateSequence(0.6, 0.98, 7, 1); // blood oxygenation Bh
-    std::vector<double> TValues = generateSequence(0.01, 0.32, 4, 1);   // epidermis thickness in cm
+    std::vector<double> BloodOxyValues = generateSequence(0.7, 0.95, 15, 1); // blood oxygenation Bh
+    std::vector<double> TValues = generateSequence(0.004, 0.010, 4, 1);   // epidermis thickness in cm
 
 //    FOR DEBUGGING - Fast generation to verify the pipeline works
 //     std::vector<double> CmValues = generateSequence(0.01, 0.50, 15, 2);      // 1% to 50%
@@ -478,7 +497,7 @@ int main() {
         CmValues.size() * ChValues.size() * BmValues.size() * 
         BloodOxyValues.size() * TValues.size() << std::endl;
     
-    std::string outputFilename = "lut_rgb_BaseLine_3.csv";
+    std::string outputFilename = "lut_rgb_BaseLine_4.csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
