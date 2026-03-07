@@ -47,6 +47,7 @@ Document formats (uncomment if needed)
 *.pdf
 *.rtf
 *.txt
+*.csv
 
 Large data files (uncomment if needed)
 *.csv
@@ -82,3 +83,4 @@ py_autoencoder/results/
 images
 cpp_inference
 README.md
+Claude.md
