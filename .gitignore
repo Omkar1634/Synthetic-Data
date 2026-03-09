@@ -85,3 +85,6 @@ cpp_inference
 README.md
 Claude.md
 .claude
+AGENTS.md
+monte_carlo.md
+validate_complete.py

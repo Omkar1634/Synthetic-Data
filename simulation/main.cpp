@@ -1,5 +1,11 @@
 #include "functions.h"
 #include <random> 
+#include <iostream>
+#include <string>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 std::random_device rd; 
 std::mt19937 gen(rd()); 
@@ -16,12 +22,11 @@ std::uniform_real_distribution<> dis(0.0, 1.0);
 #define COS90D 1e-6
 #define ONE_MINUS_COSZERO 1e-12
 #define COSZERO (1.0 - 1.0e-12)
-#define g 0.9
 #define nt 1.33
 
 
-double MonteCarlo(double epi_mua, double epi_mus, double derm_mua, double derm_mus, double epidermis_thickness) {
-    int Nphotons = 1000;
+double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua, double derm_mus, double derm_g, double epidermis_thickness) {
+    int Nphotons = 10000;
     //double ReflBin[Nbinsp1];
 
     double epi_albedo = epi_mus / (epi_mus + epi_mua);
@@ -79,18 +84,24 @@ double MonteCarlo(double epi_mua, double epi_mus, double derm_mua, double derm_m
             z = z + (s * uz);
 
             if (uz < 0) {
-                double s1 = fabs(z / uz);
-                x = x - (s * ux);
-                y = y - (s * uy);
-                z = z - (s * uz);
-                x = x + (s1 * ux);
-                y = y + (s1 * uy);
-                z = z + (s1 * uz);
+                // --- FIX 2: Recover pre-step position, then step exactly to z=0 ---
+                double x_old = x - s * ux;
+                double y_old = y - s * uy;
+                double z_old = z - s * uz;  // z_old > 0 (photon was inside tissue)
 
-                double internal_reflectance = RFresnel(1.0, nt, -uz);
-                // std::cout << "internal_reflectance: " << internal_reflectance << std::endl;
-                double external_reflectance = 1 - internal_reflectance;
-                r = sqrt(x * x + y * y);
+                // Correct path length from pre-step position to the surface (z=0)
+                double s1 = z_old / (-uz);  // uz < 0, so -uz > 0; s1 > 0
+
+                // Exact surface position
+                double x_surf = x_old + s1 * ux;
+                double y_surf = y_old + s1 * uy;
+                // z at surface = 0
+
+                // --- FIX 1: Fresnel at tissue->air interface (nt=1.33 -> 1.0) ---
+                double internal_reflectance = RFresnel(nt, 1.0, -uz);
+                double external_reflectance = 1.0 - internal_reflectance;
+
+                r = sqrt(x_surf * x_surf + y_surf * y_surf);
                 ir = static_cast<int>(r / dr);
                 if (ir >= NR) {
                     ir = NR;
@@ -100,10 +111,13 @@ double MonteCarlo(double epi_mua, double epi_mus, double derm_mua, double derm_m
                 }
                 ReflBin[ir] = ReflBin[ir] + (W * external_reflectance);
                 W = internal_reflectance * W;
-                uz = -uz;
-                x = (s - s1) * ux;
-                y = (s - s1) * uy;
-                z = (s - s1) * uz;
+
+                // Reflect direction and continue remaining path from the surface
+                uz = -uz;  // now positive (heading back into tissue)
+                double s_remaining = s - s1;
+                x = x_surf + s_remaining * ux;
+                y = y_surf + s_remaining * uy;
+                z = s_remaining * uz;  // z_surface = 0, so z = s_remaining * uz
             }
 
             if (z < epidermis_thickness) {
@@ -120,14 +134,22 @@ double MonteCarlo(double epi_mua, double epi_mus, double derm_mua, double derm_m
             absorb = W * (1 - albedo);
             W = W - absorb;
 
+            // Determine which g to use based on layer
+            double current_g;
+            if (z < epidermis_thickness) {
+                current_g = epi_g;
+            } else {
+                current_g = derm_g;
+            }
+
             // Sample for costheta
             rnd = static_cast<double>(rand()) / RAND_MAX;
-            if (g == 0.0) {
+            if (current_g == 0.0) {
                 costheta = 2.0 * rnd - 1.0;
             }
             else {
-                double temp = (1.0 - g * g) / (1.0 - g + 2 * g * rnd);
-                costheta = (1.0 + g * g - temp * temp) / (2.0 * g);
+                double temp = (1.0 - current_g * current_g) / (1.0 - current_g + 2 * current_g * rnd);
+                costheta = (1.0 + current_g * current_g - temp * temp) / (2.0 * current_g);
             }
             sintheta = sqrt(1.0 - costheta * costheta);
 
@@ -286,19 +308,16 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         double mie_term = 0.52 * pow(lambda_normalized, -0.22);  // (1 - fRay) = 0.52
         double Us_epidermis = 36.4 * (rayleigh_term + mie_term);  // Result in cm⁻¹
         double Us_dermis = 0.75 * Us_epidermis;  // Dermis has ~75% scattering of epidermis
+        double g = 0.62 + 0.00029 * (nm - 380.0);
+
         
 
-        // STORE them before Monte Carlo
-        mua_epi_values.push_back(Uepidermis);
-        mus_epi_values.push_back(Us_epidermis);
-        mua_derm_values.push_back(Udermis);
-        mus_derm_values.push_back(Us_dermis);
         // ============================================================
         // MONTE CARLO LIGHT TRANSPORT
         // ============================================================
         // T: epidermis thickness in cm
         
-        double reflectance = MonteCarlo(Uepidermis, Us_epidermis, Udermis, Us_dermis, epidermis_thickness);
+        double reflectance = MonteCarlo(Uepidermis, Us_epidermis, g, Udermis, Us_dermis, g, epidermis_thickness);
 
         
         // Store result
@@ -466,7 +485,7 @@ int main() {
     // std::vector<double> TValues = generateSequence(0.004, 0.010, 4, 1);   // epidermis thickness in cm
 
 //    FOR DEBUGGING - Fast generation to verify the pipeline works
-    std::vector<double> CmValues = generateSequence(0.01, 0.50, 15, 2);      // 1% to 50%
+    std::vector<double> CmValues = generateSequence(0.01, 0.50, 10, 2);      // 1% to 50%
     std::vector<double> ChValues = generateSequence(0.002, 0.20, 10, 2);     // 0.2% to 20%
     std::vector<double> BmValues = generateSequence(0.5, 1.0, 3, 2);         // 50% to 100%
     std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 5, 1); // 60% to 98%
@@ -482,8 +501,16 @@ int main() {
     std::cout << "Size of cartesian product: " << 
         CmValues.size() * ChValues.size() * BmValues.size() * 
         BloodOxyValues.size() * TValues.size() << std::endl;
+
+    // Get current time
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+
+    // Format datetime
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S");
     
-    std::string outputFilename = "lut_rgb_BaseLine_42.csv";
+    std::string outputFilename = "testfilename"+ ss.str() + ".csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
