@@ -485,7 +485,7 @@ int main() {
     // std::vector<double> TValues = generateSequence(0.004, 0.010, 4, 1);   // epidermis thickness in cm
 
 //    FOR DEBUGGING - Fast generation to verify the pipeline works
-    std::vector<double> CmValues = generateSequence(0.01, 0.50, 10, 2);      // 1% to 50%
+    std::vector<double> CmValues = generateSequence(0.05, 0.50, 10, 2);      // 1% to 50%
     std::vector<double> ChValues = generateSequence(0.002, 0.20, 10, 2);     // 0.2% to 20%
     std::vector<double> BmValues = generateSequence(0.5, 1.0, 3, 2);         // 50% to 100%
     std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 5, 1); // 60% to 98%
