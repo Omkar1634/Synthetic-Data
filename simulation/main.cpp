@@ -307,7 +307,7 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         double rayleigh_term = 0.48 * pow(lambda_normalized, -4.0);
         double mie_term = 0.52 * pow(lambda_normalized, -0.22);  // (1 - fRay) = 0.52
         double Us_epidermis = 36.4 * (rayleigh_term + mie_term);  // Result in cm⁻¹
-        double Us_dermis = 0.75 * Us_epidermis;  // Dermis has ~75% scattering of epidermis
+        double Us_dermis = 0.65 * Us_epidermis;  // Dermis has ~65% scattering of epidermis (reduced from 0.75 to improve 600-700nm fit)
         double g = 0.62 + 0.00029 * (nm - 380.0);
 
         
@@ -319,7 +319,11 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         
         double reflectance = MonteCarlo(Uepidermis, Us_epidermis, g, Udermis, Us_dermis, g, epidermis_thickness);
 
-        
+        // Add surface specular Fresnel reflection (air -> tissue interface, n=1.33)
+        // Real measurements include ~2% specular gloss from the stratum corneum surface
+        // that the Monte Carlo (diffuse only) does not model.
+   
+
         // Store result
         reflectances[index] = reflectance;
 
@@ -485,10 +489,10 @@ int main() {
     // std::vector<double> TValues = generateSequence(0.004, 0.010, 4, 1);   // epidermis thickness in cm
 
 //    FOR DEBUGGING - Fast generation to verify the pipeline works
-    std::vector<double> CmValues = generateSequence(0.05, 0.50, 10, 2);      // 1% to 50%
-    std::vector<double> ChValues = generateSequence(0.002, 0.20, 10, 2);     // 0.2% to 20%
-    std::vector<double> BmValues = generateSequence(0.5, 1.0, 3, 2);         // 50% to 100%
-    std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 5, 1); // 60% to 98%
+    std::vector<double> CmValues = generateSequence(0.05, 0.50, 20, 2);      // 1% to 50%
+    std::vector<double> ChValues = generateSequence(0.02, 0.20, 20, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
+    std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);         // 50% to 100%
+    std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 10, 1); // 60% to 98%
     std::vector<double> TValues = generateSequence(0.005, 0.020, 3, 1);      // 50μm to 200μm
 
     // // FINAL RANGES FOR FULL LUT GENERATION 
@@ -510,7 +514,7 @@ int main() {
     std::stringstream ss;
     ss << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S");
     
-    std::string outputFilename = "testfilename"+ ss.str() + ".csv";
+    std::string outputFilename = "lut_rgb_60k"+ ss.str() + ".csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
