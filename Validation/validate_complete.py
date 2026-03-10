@@ -15,9 +15,9 @@ import glob
 import h5py
 
 # ===== CONFIGURATION - UPDATE THESE PATHS =====
-YOUR_CSV_PATH = r"D:\Github\PhD Code\Synthetic Data\simulation\lut_rgb_60k20260309_165533.csv"
-HYPERSKIN_VIS_FOLDER = r"D:\Hyper-Skin\Hyper-Skin(RGB, VIS)\train\VIS"  # UPDATE THIS!
-OUTPUT_DIR = r"D:\Github\PhD Code\Synthetic Data\validation\lut_rgb_60k20260309_165533"  # Where to save results
+YOUR_CSV_PATH = r"D:\Github\PhD Code\Synthetic Data\simulation\lut_rgb_60k20260310_093817.csv"
+HYPERSKIN_VIS_FOLDER = r"D:\Hyper-Skin\Hyper-Skin(RGB, VIS)\train\VIS"  
+OUTPUT_DIR = r"D:\Github\PhD Code\Synthetic Data\validation\lut_rgb_60k20260310_093817"  # Where to save results
 # ==============================================
 
 def load_your_synthetic_data(csv_path):

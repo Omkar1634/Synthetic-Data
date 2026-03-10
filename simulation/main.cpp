@@ -27,8 +27,6 @@ std::uniform_real_distribution<> dis(0.0, 1.0);
 
 double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua, double derm_mus, double derm_g, double epidermis_thickness) {
     int Nphotons = 10000;
-    //double ReflBin[Nbinsp1];
-
     double epi_albedo = epi_mus / (epi_mus + epi_mua);
     double derm_albedo = derm_mus / (derm_mus + derm_mua);
     int NR = Nbins; //number of radial bins
@@ -197,21 +195,8 @@ double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua,
     double total_reflection = 0.0;
     for (int i = 0; i < NR; i++) {
     total_reflection += ReflBin[i];
-    }
-     // Right before returning
-    
-   // Option 1: Just return center bin (most accurate for diffuse albedo)
+    } 
     return total_reflection / Nphotons;
-   
-    // // Option 2: Area-weighted integration (better)
-    // double total_reflection = 0.0;
-    // for (int i = 0; i < NR; i++) {
-    //     double r_inner = i * dr;
-    //     double r_outer = (i + 1) * dr;
-    //     double area = PI * (r_outer * r_outer - r_inner * r_inner);
-    //     total_reflection += ReflBin[i] * area;
-    // }
-    // return total_reflection / (Nphotons * PI * radial_size * radial_size);
 }
 std::vector<float> generateDistribution(float minVal, float maxVal, int numSamples, double exponent = 1.0) {
     std::vector<float> values;
@@ -248,7 +233,7 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
     int step_size = 5;
     std::vector<double> wavelengths = generateArray(380, 800, step_size, false);
     std::vector<double> reflectances(wavelengths.size());
-     std::vector<double> mua_epi_values;   // Store all wavelengths
+    std::vector<double> mua_epi_values;   // Store all wavelengths
     std::vector<double> mus_epi_values;
     std::vector<double> mua_derm_values;
     std::vector<double> mus_derm_values;
@@ -300,8 +285,6 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         // SCATTERING COEFFICIENTS (μ_s) - Based on BioSkin Paper
         // ============================================================
         // Rayleigh scattering (wavelength^-4) + Mie scattering (wavelength^-0.22)
-        
-        // double Us_epidermis = 2.22e11 * std::pow(nm, -4.0) + 14.74 * std::pow(nm, -0.22);
 
         double lambda_normalized = nm / 500.0;  // Normalize to 500nm
         double rayleigh_term = 0.48 * pow(lambda_normalized, -4.0);
@@ -310,19 +293,12 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         double Us_dermis = 0.65 * Us_epidermis;  // Dermis has ~65% scattering of epidermis (reduced from 0.75 to improve 600-700nm fit)
         double g = 0.62 + 0.00029 * (nm - 380.0);
 
-        
-
         // ============================================================
         // MONTE CARLO LIGHT TRANSPORT
         // ============================================================
         // T: epidermis thickness in cm
         
         double reflectance = MonteCarlo(Uepidermis, Us_epidermis, g, Udermis, Us_dermis, g, epidermis_thickness);
-
-        // Add surface specular Fresnel reflection (air -> tissue interface, n=1.33)
-        // Real measurements include ~2% specular gloss from the stratum corneum surface
-        // that the Monte Carlo (diffuse only) does not model.
-   
 
         // Store result
         reflectances[index] = reflectance;
@@ -482,25 +458,14 @@ int main() {
     
     
     //Generate parameter ranges
-    // std::vector<double> CmValues = generateSequence(0.01, 0.43, 30, 2);  // melanin concentration Cm
-    // std::vector<double> ChValues = generateSequence(0.01, 0.04, 20, 2);  // blood concentration Ch
-    // std::vector<double> BmValues = generateSequence(0.00, 1.0, 5, 2);    // melanin blend bm
-    // std::vector<double> BloodOxyValues = generateSequence(0.7, 0.95, 15, 1); // blood oxygenation Bh
-    // std::vector<double> TValues = generateSequence(0.004, 0.010, 4, 1);   // epidermis thickness in cm
-
-//    FOR DEBUGGING - Fast generation to verify the pipeline works
+    
     std::vector<double> CmValues = generateSequence(0.05, 0.50, 20, 2);      // 1% to 50%
     std::vector<double> ChValues = generateSequence(0.02, 0.20, 20, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
     std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);         // 50% to 100%
     std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 10, 1); // 60% to 98%
     std::vector<double> TValues = generateSequence(0.005, 0.020, 3, 1);      // 50μm to 200μm
 
-    // // FINAL RANGES FOR FULL LUT GENERATION 
-    // std::vector<double> CmValues = generateSequence(0.01, 0.50, 30, 2);     // 30 samples
-    // std::vector<double> ChValues = generateSequence(0.002, 0.20, 20, 2);    // 20 samples  
-    // std::vector<double> BmValues = generateSequence(0.5, 1.0, 5, 2);        // 5 samples
-    // std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 7, 1); // 7 samples
-    // std::vector<double> TValues = generateSequence(0.005, 0.020, 4, 1);     // 4 samples
+
 
     std::cout << "Size of cartesian product: " << 
         CmValues.size() * ChValues.size() * BmValues.size() * 
