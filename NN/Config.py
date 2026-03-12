@@ -17,7 +17,7 @@ PARAM_RANGES = {
     'Ch': (0.31, 0.001),  # Hemoglobin concentration
     'Bm': (0.8, 0.2),     # Melanin baseline
     'Bh': (0.3, 0.6),     # Hemoglobin baseline
-    'T': (0.2, 0.05)      # Thickness
+    'T': (0.015, 0.005)   # Thickness: [0.005, 0.020] cm = 50–200 μm (corrected from old [0.05, 0.25])
 }
 
 # Output Configuration

@@ -25,10 +25,15 @@ std::uniform_real_distribution<> dis(0.0, 1.0);
 #define nt 1.33
 
 
-double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua, double derm_mus, double derm_g, double epidermis_thickness) {
+double MonteCarlo(double sc_mua, double sc_mus, double sc_g, double sc_thickness,
+                  double epi_mua, double epi_mus, double epi_g,
+                  double derm_mua, double derm_mus, double derm_g,
+                  double epidermis_thickness) {
     int Nphotons = 10000;
-    double epi_albedo = epi_mus / (epi_mus + epi_mua);
+    double sc_albedo   = sc_mus  / (sc_mus  + sc_mua);
+    double epi_albedo  = epi_mus / (epi_mus + epi_mua);
     double derm_albedo = derm_mus / (derm_mus + derm_mua);
+    double epi_bottom  = sc_thickness + epidermis_thickness;  // z-depth where dermis begins
     int NR = Nbins; //number of radial bins
     double radial_size = 2.5;
     double r = 0.0;
@@ -51,9 +56,9 @@ double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua,
         double costheta, sintheta, cospsi, sinpsi, psi, uxx, uyy, uzz;
         double s, rnd;
         int it, ir;
-        double mua = epi_mua;
-        double mus = epi_mus;
-        double albedo = epi_albedo;
+        double mua = sc_mua;    // photon starts at z=0, inside stratum corneum
+        double mus = sc_mus;
+        double albedo = sc_albedo;
         double absorb;
 
         // Randomly set photon trajectory to yield an isotropic source.
@@ -118,15 +123,12 @@ double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua,
                 z = s_remaining * uz;  // z_surface = 0, so z = s_remaining * uz
             }
 
-            if (z < epidermis_thickness) {
-                mua = epi_mua;
-                mus = epi_mus;
-                albedo = epi_albedo;
-            }
-            else {
-                mua = derm_mua;
-                mus = derm_mus;
-                albedo = derm_albedo;
+            if (z < sc_thickness) {
+                mua = sc_mua;   mus = sc_mus;   albedo = sc_albedo;
+            } else if (z < epi_bottom) {
+                mua = epi_mua;  mus = epi_mus;  albedo = epi_albedo;
+            } else {
+                mua = derm_mua; mus = derm_mus; albedo = derm_albedo;
             }
 
             absorb = W * (1 - albedo);
@@ -134,7 +136,9 @@ double MonteCarlo(double epi_mua, double epi_mus, double epi_g, double derm_mua,
 
             // Determine which g to use based on layer
             double current_g;
-            if (z < epidermis_thickness) {
+            if (z < sc_thickness) {
+                current_g = sc_g;
+            } else if (z < epi_bottom) {
                 current_g = epi_g;
             } else {
                 current_g = derm_g;
@@ -294,11 +298,24 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         double g = 0.62 + 0.00029 * (nm - 380.0);
 
         // ============================================================
-        // MONTE CARLO LIGHT TRANSPORT
+        // STRATUM CORNEUM (SC) — 3rd layer (topmost), ~15 μm thick
+        // Dead keratinocyte layer: high scattering, no chromophores.
+        // Key contributor to 400–440 nm backscattering (~0.10–0.15 reflectance).
         // ============================================================
-        // T: epidermis thickness in cm
-        
-        double reflectance = MonteCarlo(Uepidermis, Us_epidermis, g, Udermis, Us_dermis, g, epidermis_thickness);
+        const double sc_thickness = 0.0015;                          // cm (15 μm, fixed, not a free parameter)
+        double sc_mua = alpha_base;                                   // background absorption only (no melanin, no Hb)
+        double sc_mus = 100.0 * std::pow(400.0 / nm, 0.8);           // ~100 cm⁻¹ at 400 nm, falls with wavelength
+        const double sc_g = 0.70;                                     // slightly more isotropic than epidermis (g=0.62)
+
+        // ============================================================
+        // MONTE CARLO LIGHT TRANSPORT  (3-layer: SC → epidermis → dermis)
+        // ============================================================
+        // T: epidermis thickness in cm (not including SC)
+
+        double reflectance = MonteCarlo(sc_mua, sc_mus, sc_g, sc_thickness,
+                                        Uepidermis, Us_epidermis, g,
+                                        Udermis, Us_dermis, g,
+                                        epidermis_thickness);
 
         // Store result
         reflectances[index] = reflectance;
