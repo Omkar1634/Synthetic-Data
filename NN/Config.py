@@ -17,7 +17,20 @@ LOSS_WEIGHTS = (0.3, 0.1, 0.6)   # (parameter, albedo, end-to-end)
 RANDOM_SEED  = 7
 
 # ── Default Paths ─────────────────────────────────────────────────────────────
-DEFAULT_CHECKPOINT = "checkpoints/2026-03-14_14-26-36/best.pt"
+# Auto-discover the most-recently-modified best.pt under checkpoints/.
+# Falls back to a literal string only if no checkpoint exists yet.
+import os as _os, glob as _glob
+
+def _latest_checkpoint(base="checkpoints"):
+    """Return the best.pt from the most recently modified training run."""
+    _here = _os.path.dirname(_os.path.abspath(__file__))
+    pattern = _os.path.join(_here, base, "*", "best.pt")
+    candidates = _glob.glob(pattern)
+    if not candidates:
+        return _os.path.join(base, "best.pt")   # placeholder if none exist
+    return max(candidates, key=_os.path.getmtime)
+
+DEFAULT_CHECKPOINT = _latest_checkpoint()
 DEFAULT_LUT_PATH   = "../simulation/data/lut_rgb.csv"
 DEFAULT_OUTPUT_DIR = "output"
 

@@ -17,8 +17,12 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+_PARENT = os.path.dirname(_HERE)
+if _PARENT not in sys.path:
+    sys.path.insert(0, _PARENT)
 from utils import plotting
 
 
