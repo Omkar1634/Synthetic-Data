@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Bash(python -c \":*)",
+      "Bash(conda run -n deep-albedo python -c \":*)"
     ]
   }
 }

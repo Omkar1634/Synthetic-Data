@@ -466,14 +466,6 @@ else:
 # Show selected path
 st.sidebar.caption(f"📁 {checkpoint_path}")
 
-# Model architecture (you need to know these from your training)
-st.sidebar.markdown("**Model Architecture:**")
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    num_neurons = st.sidebar.number_input("Neurons", value=256, min_value=64, max_value=1024, step=64)
-with col2:
-    num_layers = st.sidebar.number_input("Layers", value=8, min_value=2, max_value=20, step=1)
-
 device_option = st.sidebar.selectbox(
     "Device",
     ["cuda", "cpu"],
@@ -493,17 +485,24 @@ if st.sidebar.button("Load Model", type="primary", use_container_width=True):
                 state_dict = checkpoint['model_state_dict']
             else:
                 state_dict = checkpoint
-            
-            # Create encoder
-            from latent_space_validation import Encoder, Decoder  # Import your model classes
-            encoder = Encoder(in_dim=3, hidden_dim=num_neurons, num_layers=num_layers, out_dim=5).to(device)
-            
-            # Extract encoder weights
-            encoder_state = {k.replace('encoder.', ''): v for k, v in state_dict.items() if k.startswith('encoder.')}
+
+            # Auto-detect encoder architecture from checkpoint
+            import sys as _sys, os as _os
+            _sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), '..', 'NN'))
+            from model import Encoder, Decoder
+            enc_state = {k.replace('encoder.', ''): v for k, v in state_dict.items() if k.startswith('encoder.')}
+            enc_hidden_dim = enc_state['mlp.0.weight'].shape[0]
+            enc_num_layers = sum(1 for k in enc_state if k.startswith('mlp.') and k.endswith('.weight'))
+            encoder = Encoder(in_dim=3, hidden_dim=enc_hidden_dim, num_layers=enc_num_layers, out_dim=5).to(device)
+            encoder_state = enc_state
             encoder.load_state_dict(encoder_state)
             encoder.eval()
-            
-            decoder = Decoder(in_dim=5, hidden_dim=num_neurons, num_layers=num_layers, out_dim=3).to(device)
+
+            # Auto-detect decoder architecture from checkpoint
+            dec_state = {k.replace('decoder.', ''): v for k, v in state_dict.items() if k.startswith('decoder.')}
+            dec_hidden_dim = dec_state['mlp.0.weight'].shape[0]
+            dec_num_layers = sum(1 for k in dec_state if k.startswith('mlp.') and k.endswith('.weight'))
+            decoder = Decoder(in_dim=5, hidden_dim=dec_hidden_dim, num_layers=dec_num_layers, out_dim=3).to(device)
             
             # Extract decoder weights
             decoder_state = {k.replace('decoder.', ''): v for k, v in state_dict.items() if k.startswith('decoder.')}
