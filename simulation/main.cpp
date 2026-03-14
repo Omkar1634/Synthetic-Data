@@ -24,6 +24,49 @@ std::uniform_real_distribution<> dis(0.0, 1.0);
 #define COSZERO (1.0 - 1.0e-12)
 #define nt 1.33
 
+// ============================================================
+// PROGRESS REPORTING  (thread-safe)
+// ============================================================
+// Tracks how many parameter combinations have finished.
+// Workers increment this atomically; after every REPORT_INTERVAL
+// completions the reporting thread prints a progress line.
+// ============================================================
+static std::atomic<long long> g_completed{0};   // total rows finished so far
+static long long               g_total     = 0; // set in main() before threads start
+static const long long         REPORT_INTERVAL = 5000; // print every N rows
+
+// Called once per completed row inside ProcessAndWriteBioSkin.
+// Only the thread whose increment lands on a multiple of REPORT_INTERVAL
+// actually prints, keeping output clean with no extra mutex.
+static void reportProgress(std::chrono::steady_clock::time_point programStart)
+{
+    long long done = g_completed.fetch_add(1, std::memory_order_relaxed) + 1;
+
+    // Print on every REPORT_INTERVAL boundary, and also on the very last row
+    if (done % REPORT_INTERVAL == 0 || done == g_total)
+    {
+        auto now     = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(now - programStart).count();
+
+        double pct   = 100.0 * done / g_total;
+        double eta   = (done < g_total)
+                       ? elapsed * (g_total - done) / done
+                       : 0.0;
+
+        // Format ETA as mm:ss
+        int eta_min  = static_cast<int>(eta) / 60;
+        int eta_sec  = static_cast<int>(eta) % 60;
+
+        std::cout << std::fixed << std::setprecision(1)
+                  << "[Progress] "
+                  << done << " / " << g_total
+                  << "  (" << pct << "%)"
+                  << "  elapsed: " << std::setprecision(1) << elapsed << "s"
+                  << "  ETA: " << eta_min << "m " << eta_sec << "s"
+                  << std::endl;
+    }
+}
+
 
 double MonteCarlo(double sc_mua, double sc_mus, double sc_g, double sc_thickness,
                   double epi_mua, double epi_mus, double epi_g,
@@ -469,90 +512,229 @@ void worker() {
     }
 }
 
+// ============================================================
+// THREAD POOL
+// ============================================================
+std::mutex mtx;
+std::mutex task_mtx;
+std::condition_variable cv;
+std::queue<std::function<void()>> tasks;
+bool finished = false;
+
+// programStart is passed in so reportProgress can compute elapsed time
+static std::chrono::steady_clock::time_point g_programStart;
+
+void ProcessAndWriteBioSkin(std::ofstream& outputFile,
+                             double melanin_concentration, double blood_concentration,
+                             double melanin_blend,         double blood_oxy,
+                             double epidermis_thickness)
+{
+    std::vector<double> row = Bioskin(melanin_concentration, blood_concentration,
+                                      melanin_blend, blood_oxy, epidermis_thickness);
+    if (!row.empty()) {
+        std::lock_guard<std::mutex> lock(mtx);
+        WriteRowToCSV(outputFile, row);
+    }
+
+    // ---- NEW: report progress after every completed task ----
+    reportProgress(g_programStart);
+}
+
+void worker() {
+    while (true) {
+        std::function<void()> task;
+        {
+            std::unique_lock<std::mutex> lock(task_mtx);
+            cv.wait(lock, [] { return !tasks.empty() || finished; });
+            if (tasks.empty() && finished) return;
+            task = std::move(tasks.front());
+            tasks.pop();
+        }
+        task();
+    }
+}
+
+// ============================================================
+// MAIN
+// ============================================================
 int main() {
-    double step_size = 5;
-    int numSamples = 15;
-    
-    
-    //Generate parameter ranges
-    
-    std::vector<double> CmValues = generateSequence(0.05, 0.50, 20, 2);      // 1% to 50%
-    std::vector<double> ChValues = generateSequence(0.02, 0.20, 20, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
-    std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);         // 50% to 100%
-    std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 10, 1); // 60% to 98%
-    std::vector<double> TValues = generateSequence(0.005, 0.020, 3, 1);      // 50μm to 200μm
+    // Parameter grid (unchanged)
+    std::vector<double> CmValues      = generateSequence(0.013, 0.50, 20, 2);
+    std::vector<double> ChValues      = generateSequence(0.01, 0.32, 20, 2);
+    std::vector<double> BmValues      = generateSequence(0.0,  1.0,   5, 2);
+    std::vector<double> BloodOxyValues= generateSequence(0.60, 0.98, 10, 1);
+    std::vector<double> TValues       = generateSequence(0.005,0.020,  3, 1);
 
+    g_total = (long long)CmValues.size() * ChValues.size() * BmValues.size()
+            * BloodOxyValues.size() * TValues.size();
 
+    std::cout << "Size of cartesian product: " << g_total << std::endl;
+    std::cout << "Progress will be printed every " << REPORT_INTERVAL << " rows.\n" << std::endl;
 
-    std::cout << "Size of cartesian product: " << 
-        CmValues.size() * ChValues.size() * BmValues.size() * 
-        BloodOxyValues.size() * TValues.size() << std::endl;
-
-    // Get current time
-    auto now = std::chrono::system_clock::now();
+    // Output file
+    auto now   = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-
-    // Format datetime
     std::stringstream ss;
     ss << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S");
-    
-    std::string outputFilename = "lut_rgb_60k"+ ss.str() + ".csv";
+    std::string outputFilename = "lut_rgb_60k_" + ss.str() + ".csv";
     std::ofstream outputFile(outputFilename);
 
-    // Start timers
-    auto start = std::chrono::high_resolution_clock::now();
+    // ---- Set global start time BEFORE launching threads ----
+    g_programStart = std::chrono::steady_clock::now();
+    auto wall_start = g_programStart;          // kept for final summary
 
     WriteHeaderToCSVBioWithSpectral(outputFile);
 
-    // Thread pool setup
+    // Thread pool
     const int numThreads = std::thread::hardware_concurrency();
+    std::cout << "Using " << numThreads << " CPU threads.\n" << std::endl;
     std::vector<std::thread> workers;
+    for (int i = 0; i < numThreads; i++) workers.emplace_back(worker);
 
-    for (int i = 0; i < numThreads; i++) {
-        workers.push_back(std::thread(worker));
-    }
-
-    // Generate all combinations   
-    for (auto cm : CmValues) {
-        for (auto ch : ChValues) {
-            for (auto bm : BmValues) {
-                for (auto blood_oxy : BloodOxyValues) {  // RENAMED from bh!
-                    for (auto t : TValues) {
-                        auto task = [&, cm, ch, bm, blood_oxy, t]() {
-                            ProcessAndWriteBioSkin(outputFile, cm, ch, bm, blood_oxy, t);
-                        };
-
-                        {
-                            std::unique_lock<std::mutex> lock(task_mtx);
-                            tasks.push(task);
-                            cv.notify_one();
-                        }
-                    }
+    // Enqueue all tasks
+    for (auto cm : CmValues)
+      for (auto ch : ChValues)
+        for (auto bm : BmValues)
+          for (auto blood_oxy : BloodOxyValues)
+            for (auto t : TValues) {
+                auto task = [&outputFile, cm, ch, bm, blood_oxy, t]() {
+                    ProcessAndWriteBioSkin(outputFile, cm, ch, bm, blood_oxy, t);
+                };
+                {
+                    std::unique_lock<std::mutex> lock(task_mtx);
+                    tasks.push(task);
+                    cv.notify_one();
                 }
             }
-        }
-    }
 
-    // Signal completion
-    {
-        std::unique_lock<std::mutex> lock(task_mtx);
-        finished = true;
-        cv.notify_all();
-    }
-
-    // Wait for all workers to finish
-    for (auto& worker : workers) {
-        worker.join();
-    }
+    // Signal done & join
+    { std::unique_lock<std::mutex> lock(task_mtx); finished = true; cv.notify_all(); }
+    for (auto& w : workers) w.join();
 
     outputFile.close();
-    
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Elapsed time: " << elapsed.count() << " seconds" << std::endl;
+
+    // Final summary
+    double total_elapsed = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - wall_start).count();
+    std::cout << "\n=== Done ===" << std::endl;
+    std::cout << "Total rows written : " << g_completed.load() << " / " << g_total << std::endl;
+    std::cout << "Total elapsed time : " << std::fixed << std::setprecision(2)
+              << total_elapsed << " seconds ("
+              << static_cast<int>(total_elapsed)/60 << "m "
+              << static_cast<int>(total_elapsed)%60 << "s)" << std::endl;
+    std::cout << "Output file        : " << outputFilename << std::endl;
 
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// int main() {
+//     double step_size = 5;
+//     int numSamples = 15;
+    
+    
+//     //Generate parameter ranges
+    
+//     std::vector<double> CmValues = generateSequence(0.0, 0.50, 20, 2);      // 1% to 50%
+//     std::vector<double> ChValues = generateSequence(0.02, 0.32, 20, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
+//     std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);         // 50% to 100%
+//     std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 10, 1); // 60% to 98%
+//     std::vector<double> TValues = generateSequence(0.005, 0.020, 3, 1);      // 50μm to 200μm
+
+
+
+//     std::cout << "Size of cartesian product: " << 
+//         CmValues.size() * ChValues.size() * BmValues.size() * 
+//         BloodOxyValues.size() * TValues.size() << std::endl;
+
+//     // Get current time
+//     auto now = std::chrono::system_clock::now();
+//     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+
+//     // Format datetime
+//     std::stringstream ss;
+//     ss << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S");
+    
+//     std::string outputFilename = "lut_rgb_60k"+ ss.str() + ".csv";
+//     std::ofstream outputFile(outputFilename);
+
+//     // Start timers
+//     auto start = std::chrono::high_resolution_clock::now();
+
+//     WriteHeaderToCSVBioWithSpectral(outputFile);
+
+//     // Thread pool setup
+//     const int numThreads = std::thread::hardware_concurrency();
+//     std::vector<std::thread> workers;
+
+//     for (int i = 0; i < numThreads; i++) {
+//         workers.push_back(std::thread(worker));
+//     }
+
+//     // Generate all combinations   
+//     for (auto cm : CmValues) {
+//         for (auto ch : ChValues) {
+//             for (auto bm : BmValues) {
+//                 for (auto blood_oxy : BloodOxyValues) {  // RENAMED from bh!
+//                     for (auto t : TValues) {
+//                         auto task = [&, cm, ch, bm, blood_oxy, t]() {
+//                             ProcessAndWriteBioSkin(outputFile, cm, ch, bm, blood_oxy, t);
+//                         };
+
+//                         {
+//                             std::unique_lock<std::mutex> lock(task_mtx);
+//                             tasks.push(task);
+//                             cv.notify_one();
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     // Signal completion
+//     {
+//         std::unique_lock<std::mutex> lock(task_mtx);
+//         finished = true;
+//         cv.notify_all();
+//     }
+
+//     // Wait for all workers to finish
+//     for (auto& worker : workers) {
+//         worker.join();
+//     }
+
+//     outputFile.close();
+    
+//     auto end = std::chrono::high_resolution_clock::now();
+//     std::chrono::duration<double> elapsed = end - start;
+//     std::cout << "Elapsed time: " << elapsed.count() << " seconds" << std::endl;
+
+//     return 0;
+// }
 
 
 

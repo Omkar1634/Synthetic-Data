@@ -2,3 +2,6 @@ Compile both files together :    g++ main.cpp functions.cpp -o monte_carlo.exe
 Run the program :     .\monte_carlo.exe
 
 
+GPU--
+nvcc -O3 -arch=sm_120 -o bioskin_gpu bioskin_gpu.cu -lcurand
+bioskin_gpu.exe

@@ -23,7 +23,7 @@ if _HERE not in sys.path:
 _PARENT = os.path.dirname(_HERE)
 if _PARENT not in sys.path:
     sys.path.insert(0, _PARENT)
-from utils import plotting
+# from utils import plotting
 
 
 # ── Inference outputs ─────────────────────────────────────────────────────────
@@ -64,16 +64,16 @@ def save_results(image_path, original, recovered, parameter_maps,
         (param_dir / p).mkdir(parents=True, exist_ok=True)
 
     # Analysis visualisation
-    plt.style.use("dark_background")
-    plt.rcParams["axes.grid"] = False
-    plotting.PLOT_TEX_MAPS(
-        recovered, parameter_maps,
-        title=f"Analysis: {name}",
-        save=True,
-        text_below=(f"Encode: {encode_time:.4f}s | "
-                    f"Decode: {decode_time:.4f}s | "
-                    f"Total: {encode_time + decode_time:.4f}s"),
-    )
+    # plt.style.use("dark_background")
+    # plt.rcParams["axes.grid"] = False
+    # plotting.PLOT_TEX_MAPS(
+    #     recovered, parameter_maps,
+    #     title=f"Analysis: {name}",
+    #     save=True,
+    #     text_below=(f"Encode: {encode_time:.4f}s | "
+    #                 f"Decode: {decode_time:.4f}s | "
+    #                 f"Total: {encode_time + decode_time:.4f}s"),
+    # )
     temp = Path(f"tex_maps_Analysis: {name}.png")
     if temp.exists():
         shutil.move(str(temp), str(viz_dir / f"{name}_analysis.png"))

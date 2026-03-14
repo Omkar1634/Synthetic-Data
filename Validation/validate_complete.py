@@ -22,66 +22,6 @@ GROUND TRUTH DATASET: Hyper-Skin 2023
     - File format        : MATLAB .mat (HDF5/v7.3), key = 'cube'
     - Data split         : 264 train / 18 val / 24 test (subject-level split)
 
-------------------------------------------------------------------------------
-SIMULATION CHANGELOG — changes applied to simulation/main.cpp
-------------------------------------------------------------------------------
-  v1 — Baseline (RMSE: 0.3206, MAE: 0.3103)
-    - Original Monte Carlo, Nphotons=1000
-    - BUG: RFresnel(1.0, nt, -uz) — wrong argument order at tissue-air boundary;
-           TIR never triggered, ~33% of oblique photons wrongly escaped,
-           inflating reflectance by ~0.25–0.35
-    - BUG: s1 = fabs(z / uz) — computed path *after* surface, not *to* surface;
-           subsequent position assignments x=(s-s1)*ux etc. ignored accumulated
-           lateral position, corrupting photon trajectory
-
-  v2 — Bug fixes (RMSE: 0.0749, MAE: 0.0627)
-    - FIX: RFresnel(nt, 1.0, -uz) — correct tissue→air Fresnel; TIR now fires
-           for angles > 48.75° (critical angle for n=1.33)
-    - FIX: Rewrote surface-hit block — recover z_old = z - s*uz, compute
-           s1 = z_old/(-uz), track x_surf/y_surf explicitly, continue from
-           surface position for the remaining path s_remaining = s - s1
-    - FIX: Nphotons 1000 → 10000 to reduce per-wavelength shot noise
-
-  v3 — Parameter floor (RMSE: 0.0626, MAE: 0.0490)
-    - Cm minimum raised: 0.01 → 0.05 (removes unrealistically pale skin
-      not present in Hyper-Skin; capped max synthetic reflectance ~0.65)
-
-  v4 — Calibration (RMSE: 0.0690, MAE: 0.0525)
-    - Dermis scattering: Us_dermis = 0.75 → 0.65 × Us_epidermis
-      (reduces over-scattering in 600–700 nm, lifts red reflectance)
-    - Ch minimum raised: 0.002 → 0.02 (ensures haemoglobin double-dip
-      at 540/570 nm is visible in generated spectra)
-    - Surface specular added: R_specular = ((n-1)/(n+1))^2 ≈ 0.020
-      NOTE: later removed — adds uniform offset, overcorrects 450–560 nm
-
-  v5 — Grid expansion + specular removed (RMSE: 0.0641, MAE: 0.0457)
-    - Specular term removed (commented out) — was inflating green band
-    - LUT grid expanded to 60,000 samples (20×20×5×10×3)
-    - Bm range restored to 0.0–1.0 (was 0.5–1.0; exclusion biased mean darker)
-    - T confirmed as cm: 0.005–0.020 cm = 50–200 μm (physiologically correct)
-    - generateSequence exponent encoding: Cm=2, Ch=2, Bm=2 (power-law spacing)
-    - New validation metrics (20 subjects): RMSE=0.0799, SAM=14.3°, ΔE=11.5
-
-  v6 — Stratum corneum layer added  ← current
-    - NEW: MonteCarlo upgraded from 2-layer to 3-layer model
-      Stack order (top → bottom): SC → epidermis → dermis
-    - SC optical properties (wavelength-dependent, fixed parameters, not free):
-        sc_thickness = 0.0015 cm (15 μm)
-        sc_mua       = alpha_base  (background absorption only, no chromophores)
-        sc_mus       = 100 × (400/λ)^0.8 cm⁻¹  (~100 at 400 nm, ~62 at 700 nm)
-        sc_g         = 0.70  (slightly more isotropic than epidermis g=0.62)
-    - Expected improvement: +0.10–0.15 reflectance at 400–440 nm, closing the
-      deficit that drove SAM=14.3°, ΔE=11.5, and PCA/t-SNE separation
-
-------------------------------------------------------------------------------
-KNOWN LIMITATIONS OF THE TWO-LAYER MODEL
-------------------------------------------------------------------------------
-  - 400–440 nm deficit (~−0.18): missing stratum corneum (SC) layer; the SC
-    is a ~10–20 μm dead-cell layer with high scattering and no melanin that
-    acts as a diffuse backscatterer, contributing ~0.10–0.15 reflectance
-    at short wavelengths
-  - Current model: epidermis (melanin + scattering) + dermis (Hb + scattering)
-  - Planned: add SC as a third purely-scattering layer
 
 ------------------------------------------------------------------------------
 VALIDATION METHODOLOGY NOTES (for publication)
@@ -117,9 +57,9 @@ except ImportError:
     print("ℹ️  scikit-learn not found — PCA/t-SNE plot will be skipped.  pip install scikit-learn")
 
 # ===== CONFIGURATION - UPDATE THESE PATHS =====
-YOUR_CSV_PATH = r"D:\Github\PhD Code\Synthetic Data\simulation\lut_rgb_60k20260310_093817.csv"
+YOUR_CSV_PATH = r"D:\Github\PhD Code\Synthetic Data\simulation\lut_rgb_60k20260314_175841.csv"
 HYPERSKIN_VIS_FOLDER = r"D:\Hyper-Skin\Hyper-Skin(RGB, VIS)\train\VIS"  
-OUTPUT_DIR = r"D:\Github\PhD Code\Synthetic Data\validation\lut_rgb_60k20260310_093817_new_metrics"  # Where to save results
+OUTPUT_DIR = r"D:\Github\PhD Code\Synthetic Data\validation\lut_rgb_60k20260314_175841"  # Where to save results
 # ==============================================
 
 def load_your_synthetic_data(csv_path):
