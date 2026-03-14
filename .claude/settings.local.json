@@ -3,8 +3,9 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(claude mcp:*)",
-      "Bash(python -c \":*)",
-      "Bash(conda run -n deep-albedo python -c \":*)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''Validation/validate_complete.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")"
     ]
   }
 }
