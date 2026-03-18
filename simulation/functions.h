@@ -1263,6 +1263,83 @@ static const double epsilon_bilirubin[] = {
          0,  // 800 nm
 };
 
+// Beta-carotene molar extinction coefficients (cm-1/M)
+// Source: OMLC PhotochemCAD https://omlc.org/spectra/PhotochemCAD/html/041.html
+// 380 to 800 nm, 5nm steps — 85 entries
+// Molar weight w_carotene = 536.87 g/mol
+static const double epsilon_betacarotene[] = {
+      32072,  // 380 nm
+      36008,  // 385 nm
+      42098,  // 390 nm
+      51164,  // 395 nm
+      60258,  // 400 nm
+      65203,  // 405 nm
+      73179,  // 410 nm
+      83354,  // 415 nm
+      97712,  // 420 nm
+     105756,  // 425 nm
+     107324,  // 430 nm
+     110805,  // 435 nm
+     120948,  // 440 nm
+     132609,  // 445 nm
+     138243,  // 450 nm   ← peak
+     134000,  // 455 nm
+     119818,  // 460 nm
+     110386,  // 465 nm
+     108792,  // 470 nm
+     112972,  // 475 nm
+     110166,  // 480 nm
+      96248,  // 485 nm
+      74945,  // 490 nm
+      52376,  // 495 nm
+      32135,  // 500 nm
+      19596,  // 505 nm
+      10440,  // 510 nm
+       5129,  // 515 nm
+       3319,  // 520 nm
+       1990,  // 525 nm
+       2040,  // 530 nm
+       2053,  // 535 nm
+        571,  // 540 nm
+        774,  // 545 nm
+       1756,  // 550 nm
+       1963,  // 555 nm
+        774,  // 560 nm
+          0,  // 565 nm
+        481,  // 570 nm
+       1107,  // 575 nm
+       1116,  // 580 nm
+          0,  // 585 nm
+        481,  // 590 nm
+        626,  // 595 nm
+        522,  // 600 nm
+        963,  // 605 nm
+        486,  // 610 nm
+       1472,  // 615 nm
+        535,  // 620 nm
+       1017,  // 625 nm
+       1495,  // 630 nm
+        963,  // 635 nm
+       1612,  // 640 nm
+       1774,  // 645 nm
+        828,  // 650 nm
+        535,  // 655 nm
+       1013,  // 660 nm
+        562,  // 665 nm
+        549,  // 670 nm
+        297,  // 675 nm
+        765,  // 680 nm
+          0,  // 685 nm
+        373,  // 690 nm
+        477,  // 695 nm
+        252,  // 700 nm
+          0,  // 705 nm
+          0,  // 710–800 nm (noise floor)
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+ // cm-1
 
 
 double getDeoxyHbValue(int wavelength);
