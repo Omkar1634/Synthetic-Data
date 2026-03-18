@@ -476,11 +476,11 @@ int main() {
     
     //Generate parameter ranges
     
-    std::vector<double> CmValues = generateSequence(0.05, 0.50, 20, 2);      // 1% to 50%
-    std::vector<double> ChValues = generateSequence(0.02, 0.20, 20, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
+    std::vector<double> CmValues = generateSequence(0.05, 0.50, 51, 2);      // 1% to 50%
+    std::vector<double> ChValues = generateSequence(0.02, 0.20, 51, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
     std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);         // 50% to 100%
-    std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 10, 1); // 60% to 98%
-    std::vector<double> TValues = generateSequence(0.005, 0.020, 3, 1);      // 50μm to 200μm
+    std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 13, 1); // 60% to 98%
+    std::vector<double> TValues = generateSequence(0.005, 0.020, 5, 1);      // 50μm to 200μm
 
 
 
@@ -496,7 +496,7 @@ int main() {
     std::stringstream ss;
     ss << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S");
     
-    std::string outputFilename = "lut_rgb_60k"+ ss.str() + ".csv";
+    std::string outputFilename = "lut_rgb_"+ ss.str() + ".csv";
     std::ofstream outputFile(outputFilename);
 
     // Start timers
