@@ -57,9 +57,9 @@ except ImportError:
     print("ℹ️  scikit-learn not found — PCA/t-SNE plot will be skipped.  pip install scikit-learn")
 
 # ===== CONFIGURATION - UPDATE THESE PATHS =====
-YOUR_CSV_PATH = r"D:\Github\PhD Code\Synthetic Data\simulation\lut_rgb_60k20260314_175841.csv"
+YOUR_CSV_PATH = r"D:\Github\PhD Code\Synthetic Data\simulation\lut_rgb_gpu_20260314_232049.csv"
 HYPERSKIN_VIS_FOLDER = r"D:\Hyper-Skin\Hyper-Skin(RGB, VIS)\train\VIS"  
-OUTPUT_DIR = r"D:\Github\PhD Code\Synthetic Data\validation\lut_rgb_60k20260314_175841"  # Where to save results
+OUTPUT_DIR = r"D:\Github\PhD Code\Synthetic Data\validation\lut_rgb_gpu_20260314_232049"  # Where to save results
 # ==============================================
 
 def load_your_synthetic_data(csv_path):
