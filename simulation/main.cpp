@@ -250,7 +250,8 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         // ============================================================
         
         // Baseline absorption (tissue water, proteins, lipids)
-        double alpha_base = 0.0244 + 8.53 * std::exp(-(nm - 154.0) / 66.2);
+        //double alpha_base = 0.0244 + 8.53 * std::exp(-(nm - 154.0) / 66.2);
+        double alpha_base = 7.84e8 * std::pow(nm, -3.255);
         
         // Melanin absorption spectra
         double alpha_eumelanin = 6.6e10 * std::pow(nm, -3.33);
@@ -274,6 +275,19 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         
         double melanin_absorption = melanin_blend * alpha_eumelanin + (1.0 - melanin_blend) * alpha_pheomelanin;
         double Uepidermis = melanin_concentration * melanin_absorption + (1.0 - melanin_concentration) * (alpha_base + alpha_carotene_epi);
+
+        // ============================================================
+        // BILIRUBIN - Fixed constants from paper Table 2
+        // ============================================================
+        double pbil = 0.05;       // concentration g/L
+        double wbil = 584.66;     // molar weight g/mol
+
+        // Bilirubin molar extinction coefficient (wavelength dependent)
+        // Standard values from tissue optics literature (van Veen et al.)
+        int idx = (nm - 380) / step_size;
+        double epsilon_bil    = epsilon_bilirubin[idx];       // cm-1/M
+        double alpha_bilirubin = epsilon_bil * (pbil / wbil); // cm-1
+
         
         // ============================================================
         // DERMIS ABSORPTION
@@ -282,8 +296,8 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         // Bh: blood oxygenation (0=deoxygenated, 1=oxygenated)
         
         double blood_absorption = blood_oxy * alpha_HbO2 + (1.0 - blood_oxy) * alpha_Hb;
-        double Udermis = blood_concentration * (blood_absorption + alpha_carotene_derm) + (1.0 - blood_concentration) * alpha_base;
-        
+        double Udermis = blood_concentration * (blood_absorption + alpha_bilirubin + alpha_carotene_derm)
+               + (1.0 - blood_concentration) * alpha_base;        
         // ============================================================
         // SCATTERING COEFFICIENTS (μ_s) - Based on BioSkin Paper
         // ============================================================
@@ -301,10 +315,10 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         // Dead keratinocyte layer: high scattering, no chromophores.
         // Key contributor to 400–440 nm backscattering (~0.10–0.15 reflectance).
         // ============================================================
-        const double sc_thickness = 0.0015;                          // cm (15 μm, fixed, not a free parameter)
-        double sc_mua = alpha_base;                                   // background absorption only (no melanin, no Hb)
-        double sc_mus = 100.0 * std::pow(400.0 / nm, 0.8);           // ~100 cm⁻¹ at 400 nm, falls with wavelength
-        const double sc_g = 0.70;                                     // slightly more isotropic than epidermis (g=0.62)
+        // const double sc_thickness = 0.0015;                          // cm (15 μm, fixed, not a free parameter)
+        // double sc_mua = alpha_base;                                   // background absorption only (no melanin, no Hb)
+        // double sc_mus = 100.0 * std::pow(400.0 / nm, 0.8);           // ~100 cm⁻¹ at 400 nm, falls with wavelength
+        // const double sc_g = 0.70;                                     // slightly more isotropic than epidermis (g=0.62)
 
         // ============================================================
         // MONTE CARLO LIGHT TRANSPORT  (3-layer: SC → epidermis → dermis)
