@@ -1,5 +1,5 @@
 #include "functions.h"
-#include <random> 
+#include <random>
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -7,8 +7,8 @@
 #include <iomanip>
 #include <sstream>
 
-std::random_device rd; 
-std::mt19937 gen(rd()); 
+std::random_device rd;
+std::mt19937 gen(rd());
 std::uniform_real_distribution<> dis(0.0, 1.0);
 
 #define Nbins 1000
@@ -42,154 +42,150 @@ double MonteCarlo(
     double derm_mua, double derm_mus, double derm_g,
     double epidermis_thickness)
 {
-    int totalPhotons = 1000000;
-    int numThreads = std::thread::hardware_concurrency();
-    int photonsPerThread = totalPhotons / numThreads;
+    const int    totalPhotons = 1000000;
+    const double n_tissue     = 1.4;
+    const double n_air        = 1.0;
 
-    int NR = Nbins;
-    double radial_size = 2.5;
-    double dr = radial_size / NR;
+    thread_local std::mt19937 gen(std::random_device{}());
+    thread_local std::uniform_real_distribution<> dis(0.0, 1.0);
 
-    std::vector<std::vector<double>> threadBins(numThreads, std::vector<double>(NR + 1, 0.0));
-
-    std::vector<std::thread> threads;
-
-    for (int t = 0; t < numThreads; t++) {
-
-        threads.emplace_back([&, t]() {
-
-            // ✅ thread-local RNG
-            thread_local std::mt19937 gen(std::random_device{}());
-            thread_local std::uniform_real_distribution<> dis(0.0, 1.0);
-
-            double epi_albedo  = epi_mus / (epi_mus + epi_mua);
-            double derm_albedo = derm_mus / (derm_mus + derm_mua);
-
-            auto& ReflBin = threadBins[t];
-
-            for (int i_photon = 0; i_photon < photonsPerThread; i_photon++) {
-
-                double W = 1.0;
-                int photon_status = ALIVE;
-
-                double x = 0.0, y = 0.0, z = 0.0;
-                double ux, uy, uz;
-
-                double costheta = 2.0 * dis(gen) - 1.0;
-                double sintheta = sqrt(1.0 - costheta * costheta);
-                double psi = 2.0 * PI * dis(gen);
-
-                ux = sintheta * cos(psi);
-                uy = sintheta * sin(psi);
-                uz = fabs(costheta);
-
-                double mua = epi_mua;
-                double mus = epi_mus;
-                double albedo = epi_albedo;
-
-                int it = 0;
-                const int max_iterations = 10000;
-
-                while (true) {
-                    it++;
-
-                    double rnd = dis(gen);
-                    while (rnd <= 0.0) rnd = dis(gen);
-
-                    double s = -log(rnd) / (mua + mus);
-
-                    x += s * ux;
-                    y += s * uy;
-                    z += s * uz;
-
-                    if (uz < 0) {
-                        double x_old = x - s * ux;
-                        double y_old = y - s * uy;
-                        double z_old = z - s * uz;
-
-                        double s1 = z_old / (-uz);
-
-                        double x_surf = x_old + s1 * ux;
-                        double y_surf = y_old + s1 * uy;
-
-                        double internal_reflectance = RFresnel(nt, 1.0, -uz);
-                        double external_reflectance = 1.0 - internal_reflectance;
-
-                        double r = sqrt(x_surf * x_surf + y_surf * y_surf);
-                        int ir = static_cast<int>(r / dr);
-                        if (ir >= NR) ir = NR;
-                        if (ir < 0) ir = 0;
-
-                        ReflBin[ir] += W * external_reflectance;
-                        W *= internal_reflectance;
-
-                        uz = -uz;
-                    }
-
-                    if (z < epidermis_thickness) {
-                        mua = epi_mua;
-                        mus = epi_mus;
-                        albedo = epi_albedo;
-                    } else {
-                        mua = derm_mua;
-                        mus = derm_mus;
-                        albedo = derm_albedo;
-                    }
-
-                    double absorb = W * (1 - albedo);
-                    W -= absorb;
-
-                    double current_g = (z < epidermis_thickness) ? epi_g : derm_g;
-
-                    rnd = dis(gen);
-                    if (current_g == 0.0) {
-                        costheta = 2.0 * rnd - 1.0;
-                    } else {
-                        double temp = (1.0 - current_g * current_g) /
-                                      (1.0 - current_g + 2 * current_g * rnd);
-                        costheta = (1.0 + current_g * current_g - temp * temp) /
-                                   (2.0 * current_g);
-                    }
-
-                    sintheta = sqrt(1.0 - costheta * costheta);
-                    psi = 2.0 * PI * dis(gen);
-
-                    ux = sintheta * cos(psi);
-                    uy = sintheta * sin(psi);
-                    uz = costheta;
-
-                    if (W < THRESHOLD) {
-                        if (dis(gen) <= CHANCE) {
-                            W /= CHANCE;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if (it > max_iterations) break;
-                }
-            }
-        });
-    }
-
-    for (auto& th : threads) th.join();
-
-    // ✅ Combine results
-    std::vector<double> ReflBin(NR + 1, 0.0);
-
-    for (int t = 0; t < numThreads; t++) {
-        for (int i = 0; i <= NR; i++) {
-            ReflBin[i] += threadBins[t][i];
-        }
-    }
+    const double epi_albedo  = epi_mus  / (epi_mus  + epi_mua);
+    const double derm_albedo = derm_mus / (derm_mus + derm_mua);
 
     double total_reflection = 0.0;
-    for (int i = 0; i < NR; i++) {
-        total_reflection += ReflBin[i];
+
+    for (int i_photon = 0; i_photon < totalPhotons; i_photon++) {
+
+        // ── Lambertian launch (paper section 3.2) ──────────────────────
+        // Photon starts just inside the surface, direction cosine-weighted.
+        // 2D walk: only track (r, z). Azimuthal symmetry assumed.
+        // r is the radial distance from launch point.
+        double uz = sqrt(dis(gen));             // cos-weighted, uz > 0 (into tissue)
+        double ur = sqrt(1.0 - uz * uz);        // radial component (2D)
+
+        double r = 0.0;
+        double z = 0.0;
+        double W = 1.0;
+
+        double mua    = epi_mua;
+        double mus    = epi_mus;
+        double g      = epi_g;
+        double albedo = epi_albedo;
+
+        const int max_iter = 100000;
+
+        for (int it = 0; it < max_iter; it++) {
+
+            // ── Sample step length ──────────────────────────────────────
+            double rnd = dis(gen);
+            while (rnd <= 0.0) rnd = dis(gen);
+            double mu_t = mua + mus;
+            double s    = -log(rnd) / mu_t;
+
+            // ── Find distance to nearest boundary ───────────────────────
+            double s_bound  = 1e30;
+            bool   hit_surf = false;   // true = top surface, false = epi/derm
+
+            if (uz > 1e-10) {
+                // Moving deeper: check epi→derm boundary
+                if (z < epidermis_thickness) {
+                    double s_epi = (epidermis_thickness - z) / uz;
+                    if (s_epi < s_bound) { s_bound = s_epi; hit_surf = false; }
+                }
+            } else if (uz < -1e-10) {
+                // Moving up: check top surface z = 0
+                double s_top = -z / uz;
+                if (s_top < s_bound) { s_bound = s_top; hit_surf = true; }
+            }
+
+            if (s_bound < s) {
+                // ── Step to boundary ────────────────────────────────────
+                r += s_bound * ur;
+                z += s_bound * uz;
+                double s_left = s - s_bound;
+
+                // Absorption along boundary segment
+                W *= exp(-mua * s_bound);
+
+                if (hit_surf) {
+                    // ── Top surface: Fresnel (tissue→air) ───────────────
+                    double cos_i = fabs(uz);
+                    double R     = RFresnel(n_tissue, n_air, cos_i);
+
+                    if (dis(gen) > R) {
+                        // Transmitted — photon escapes, record reflectance
+                        total_reflection += W;
+                        goto next_photon;
+                    } else {
+                        // Internal reflection — flip direction
+                        uz = -uz;
+                    }
+                }
+                // epi/derm boundary: no Fresnel (same n per paper)
+                // just update optical properties at new z
+                if (z >= epidermis_thickness) {
+                    mua = derm_mua; mus = derm_mus;
+                    g = derm_g;     albedo = derm_albedo;
+                } else {
+                    mua = epi_mua;  mus = epi_mus;
+                    g = epi_g;      albedo = epi_albedo;
+                }
+
+                // Continue remaining path in new layer
+                if (s_left > 1e-12) {
+                    r += s_left * ur;
+                    z += s_left * uz;
+                    W *= exp(-mua * s_left);
+                }
+
+            } else {
+                // ── Normal step, no boundary crossed ────────────────────
+                r += s * ur;
+                z += s * uz;
+                W *= exp(-mua * s);
+            }
+
+            // ── Absorption (implicit capture via weight) ─────────────────
+            // W already reduced by exp(-mua*s) above — this is the correct
+            // approach for the 2D walk: weight carries survival probability.
+            // Scale by albedo for the scattering event:
+            W *= albedo;
+
+            // ── Henyey-Greenstein scattering (2D form per paper) ─────────
+            // In 2D, the phase function gives a deflection angle in the plane.
+            double costheta_s;
+            rnd = dis(gen);
+            if (g == 0.0) {
+                costheta_s = 2.0 * rnd - 1.0;
+            } else if (g >= COSZERO) {
+                costheta_s = 1.0;
+            } else {
+                double temp = (1.0 - g * g) / (1.0 - g + 2.0 * g * rnd);
+                costheta_s  = (1.0 + g * g - temp * temp) / (2.0 * g);
+            }
+            costheta_s = fmax(-1.0, fmin(1.0, costheta_s));
+            double sintheta_s = sqrt(1.0 - costheta_s * costheta_s);
+
+            // 2D direction update: rotate (ur, uz) by deflection angle
+            double new_ur =  ur * costheta_s + uz * sintheta_s;
+            double new_uz = -ur * sintheta_s + uz * costheta_s;
+            ur = new_ur;
+            uz = new_uz;
+
+            // ── Russian roulette ─────────────────────────────────────────
+            if (W < THRESHOLD) {
+                if (dis(gen) <= CHANCE) W /= CHANCE;
+                else goto next_photon;
+            }
+        }
+
+        next_photon:;
     }
 
     return total_reflection / totalPhotons;
 }
+
+
 
 
 std::vector<float> generateDistribution(float minVal, float maxVal, int numSamples, double exponent = 1.0) {
@@ -213,7 +209,7 @@ std::vector<double> generateArray(double a, double b, double s, bool print_resul
     }
     return result;
 }
-    
+
 
 
 
@@ -224,7 +220,7 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
     double epidermis_thickness     // T: Thickness of epidermis in cm
 )  {
     // Wavelength range: 380 to 800 nm with 5nm step
-    int step_size = 5;
+    int step_size = 10;
     std::vector<double> wavelengths = generateArray(380, 800, step_size, false);
     std::vector<double> reflectances(wavelengths.size());
     std::vector<double> mua_epi_values;   // Store all wavelengths
@@ -233,7 +229,7 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
     std::vector<double> mus_derm_values;
     // Accumulator for XYZ color matching
     std::vector<double> total = {0.0, 0.0, 0.0};
-    
+
     int index = 0;
     for (int nm : wavelengths) {
         // ============================================================
@@ -312,21 +308,21 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         reflectances[index] = reflectance;
 
         double d65 = getD65Value(nm);
-        
+
         // ============================================================
         // ACCUMULATE XYZ COLOR MATCHING FUNCTIONS
         // ============================================================
         double x = xFit_1931(nm);
         double y = yFit_1931(nm);
         double z = zFit_1931(nm);
-        
+
         // ACCUMULATE WITH D65 AND STEP_SIZE (CRITICAL!)
         total[0] += x * reflectance * d65 * step_size;
         total[1] += y * reflectance * d65 * step_size;
         total[2] += z * reflectance * d65 * step_size;
         index++;
     }
-    
+
     // ============================================================
     // STEP 2: NORMALIZE XYZ (NEW!)
     // ============================================================
@@ -336,25 +332,25 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         double d65 = getD65Value(nm);
         normalization += y * d65 * step_size;
     }
-    
+
     // Scale to Y=100 for perfect white
     total[0] = 100.0 * total[0] / normalization;
     total[1] = 100.0 * total[1] / normalization;
     total[2] = 100.0 * total[2] / normalization;
-    
+
     // ============================================================
     // CONVERT XYZ TO sRGB
     // ============================================================
     std::vector<double> sRGB = XYZ_to_sRGB(total, step_size);
-    
+
     // ============================================================
     // BUILD OUTPUT ROW
     // ============================================================
     std::vector<double> row;
-    
+
     // Only return valid colors (RGB values in range 0-255)
     if (!(sRGB[0] > 255 || sRGB[1] > 255 || sRGB[2] > 255)) {
-        
+
         row.push_back(melanin_concentration);   // Melanin concentration
         row.push_back(blood_concentration);   // Blood concentration
         row.push_back(melanin_blend);   // Melanin blend
@@ -365,17 +361,17 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         // for (double val : mua_epi_values) {
         //     row.push_back(val);
         // }
-        
+
         // // Epidermis scattering (85)
         // for (double val : mus_epi_values) {
         //     row.push_back(val);
         // }
-        
+
         // // Dermis absorption (85)
         // for (double val : mua_derm_values) {
         //     row.push_back(val);
         // }
-        
+
         // // Dermis scattering (85)
         // for (double val : mus_derm_values) {
         //     row.push_back(val);
@@ -392,8 +388,8 @@ std::vector<double> Bioskin(double melanin_concentration,  // Cm: Volume fractio
         row.push_back(sRGB[1]); // Green
         row.push_back(sRGB[2]); // Blue
     }
-   
-    
+
+
     return row;
 }
 
@@ -404,13 +400,13 @@ std::vector<double> generateSequence(double start, double end, int numSamples, d
     // Create uniform distribution from 0 to 1
     for (int i = 0; i < numSamples; ++i) {
         double uniformValue = static_cast<double>(i) / (numSamples - 1);  // Gives [0, 0.25, 0.5, 0.75, 1.0] for 5 samples
-        
+
         // Apply the exponent (cubic = 3, quartic = 4)
         double exponentiatedValue = std::pow(uniformValue, exponent);  // For cubic: x³
-        
+
         // Scale from [0,1] to [start,end]
         double scaledValue = start + (end - start) * exponentiatedValue;
-        
+
         values.push_back(scaledValue);
     }
 
@@ -454,15 +450,9 @@ void ProcessAndWriteBioSkin(
 
     // ✅ Progress update
     int done = ++completedTasks;
-
-    if (done % 100 == 0) {
-        double percent = 100.0 * done / totalTasks;
-
-        std::cout << "Progress: " << done << " / " << totalTasks << " (" << percent << "%)\r";
-
-        std::cout.flush();
-    }
 }
+
+
 void worker() {
     while (true) {
         std::function<void()> task;
@@ -486,25 +476,17 @@ void worker() {
 void writerThread(std::ofstream& outputFile) {
     while (true) {
         std::unique_lock<std::mutex> lock(write_mtx);
-
         write_cv.wait(lock, [] {
             return !writeQueue.empty() || writingFinished;
         });
-
         while (!writeQueue.empty()) {
             auto row = std::move(writeQueue.front());
             writeQueue.pop();
-
-            lock.unlock();  // 🔥 unlock while writing (important!)
-
+            lock.unlock();
             WriteRowToCSV(outputFile, row);
-
             lock.lock();
         }
-
-        if (writingFinished && writeQueue.empty()) {
-            break;
-        }
+        if (writingFinished && writeQueue.empty()) break;
     }
 }
 
@@ -513,7 +495,7 @@ int main() {
     int numSamples = 15;
 
     std::vector<double> CmValues = generateSequence(0.001, 0.50, 51, 3);
-    std::vector<double> ChValues = generateSequence(0.02, 0.20, 51, 4);
+    std::vector<double> ChValues = generateSequence(0.01, 0.80, 51, 4);
     std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 1);
     std::vector<double> BloodOxyValues = generateSequence(0.60, 0.98, 13, 1);
     std::vector<double> TValues = generateSequence(0.005, 0.020, 5, 1);
@@ -540,68 +522,70 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
 
     // === Start writer thread ===
+
     std::thread writer(writerThread, std::ref(outputFile));
+
+    std::atomic<bool> progressRunning(true);
+    auto startTime = std::chrono::steady_clock::now();
+
+    std::thread progressThread([&progressRunning, startTime]() {
+        using namespace std::chrono;
+            while (progressRunning.load()) {
+                std::this_thread::sleep_for(minutes(5));
+                if (!progressRunning.load()) break;
+
+                int done   = completedTasks.load();
+                double pct = 100.0 * done / totalTasks;
+                auto now   = steady_clock::now();
+                double elapsed = duration<double>(now - startTime).count();
+                double eta = (done > 0) ? (elapsed / done) * (totalTasks - done) : 0.0;
+
+                std::cout << "[" << std::fixed << std::setprecision(1) << pct << "%] "
+                        << done << " / " << totalTasks
+                        << "  elapsed: " << (int)(elapsed/60) << "m" << (int)fmod(elapsed,60) << "s"
+                        << "  ETA: "    << (int)(eta/60)     << "m" << (int)fmod(eta,60)    << "s"
+                        << "\n";
+                std::cout.flush();
+            }
+        });
 
     // === Worker threads ===
     const int numThreads = std::thread::hardware_concurrency();
     std::vector<std::thread> workers;
-
-    for (int i = 0; i < numThreads; i++) {
+    for (int i = 0; i < numThreads; i++)
         workers.emplace_back(worker);
-    }
 
     // === Push tasks ===
-    for (auto cm : CmValues) {
-        for (auto ch : ChValues) {
-            for (auto bm : BmValues) {
-                for (auto blood_oxy : BloodOxyValues) {
-                    for (auto t : TValues) {
-
-                        auto task = [cm, ch, bm, blood_oxy, t]() {
-                            ProcessAndWriteBioSkin(cm, ch, bm, blood_oxy, t);
-                        };
-
-                        {
-                            std::lock_guard<std::mutex> lock(task_mtx);
-                            tasks.push(task);
-                        }
-                        cv.notify_one();
-                    }
+    for (auto cm : CmValues)
+      for (auto ch : ChValues)
+        for (auto bm : BmValues)
+          for (auto blood_oxy : BloodOxyValues)
+            for (auto t : TValues) {
+                {
+                    std::lock_guard<std::mutex> lock(task_mtx);
+                    tasks.push([cm, ch, bm, blood_oxy, t]() {
+                        ProcessAndWriteBioSkin(cm, ch, bm, blood_oxy, t);
+                    });
                 }
+                cv.notify_one();
             }
-        }
-    }
 
     // === Signal workers done ===
-    {
-        std::lock_guard<std::mutex> lock(task_mtx);
-        finished = true;
-    }
+    { std::lock_guard<std::mutex> lock(task_mtx); finished = true; }
     cv.notify_all();
+    for (auto& w : workers) w.join();
 
-    // === Join workers ===
-    for (auto& w : workers) {
-        w.join();
-    }
+    // === Stop progress thread ===
+    progressRunning.store(false);
+    progressThread.join();
 
     // === Finish writer ===
-    {
-        std::lock_guard<std::mutex> lock(write_mtx);
-        writingFinished = true;
-    }
+    { std::lock_guard<std::mutex> lock(write_mtx); writingFinished = true; }
     write_cv.notify_all();
-
     writer.join();
 
     outputFile.close();
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-
-    std::cout << "\nDone!\n";
-    std::cout << "Total datasets generated: " << completedTasks << std::endl;
-    std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
-
+    // ... print elapsed time ...
     return 0;
 }
 
@@ -683,10 +667,10 @@ int main() {
 // int main() {
 //     double step_size = 5;
 //     int numSamples = 15;
-    
-    
+
+
 //     //Generate parameter ranges
-    
+
 //     std::vector<double> CmValues = generateSequence(0.05, 0.50, 51, 2);      // 1% to 50%
 //     std::vector<double> ChValues = generateSequence(0.02, 0.20, 51, 2);      // 2% to 20% (raised min to ensure haemoglobin features are visible)
 //     std::vector<double> BmValues = generateSequence(0.0, 1.0, 5, 2);         // 50% to 100%
@@ -695,7 +679,7 @@ int main() {
 
 
 
-//     totalTasks =  CmValues.size() * ChValues.size() * BmValues.size() * 
+//     totalTasks =  CmValues.size() * ChValues.size() * BmValues.size() *
 //         BloodOxyValues.size() * TValues.size();
 
 //     // Get current time
@@ -705,7 +689,7 @@ int main() {
 //     // Format datetime
 //     std::stringstream ss;
 //     ss << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S");
-    
+
 //     std::string outputFilename = "lut_rgb_"+ ss.str() + ".csv";
 //     std::ofstream outputFile(outputFilename);
 
@@ -722,7 +706,7 @@ int main() {
 //         workers.push_back(std::thread(worker));
 //     }
 
-//     // Generate all combinations   
+//     // Generate all combinations
 //     for (auto cm : CmValues) {
 //         for (auto ch : ChValues) {
 //             for (auto bm : BmValues) {
@@ -756,7 +740,7 @@ int main() {
 //     }
 
 //     outputFile.close();
-    
+
 //     auto end = std::chrono::high_resolution_clock::now();
 //     std::chrono::duration<double> elapsed = end - start;
 //     std::cout << "Elapsed time: " << elapsed.count() << " seconds" << std::endl;
@@ -805,7 +789,7 @@ int main() {
 //         // std::cout << "psi: " << psi << std::endl;
 //         ux = sintheta * cos(psi);
 //         uy = sintheta * sin(psi);
-//         uz = (fabs(costheta)); // fabs is 
+//         uz = (fabs(costheta)); // fabs is
 
 //         // Propagate one photon until it dies as determined by ROULETTE or reaches the surface
 //         it = 0;
@@ -937,7 +921,7 @@ int main() {
 //     double total_reflection = 0.0;
 //     for (int i = 0; i < NR; i++) {
 //     total_reflection += ReflBin[i];
-//     } 
+//     }
 //     return total_reflection / Nphotons;
 // }
 
