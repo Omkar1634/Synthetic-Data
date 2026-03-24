@@ -5,7 +5,11 @@
       "Bash(claude mcp:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(python -c \"import ast; ast.parse\\(open\\(''Validation/validate_complete.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''Validation/validate_complete.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import sys; sys.stdout.buffer.write\\(sys.stdin.buffer.read\\(\\)\\)\" 2)",
+      "Bash(1 echo:*)"
     ]
   }
 }

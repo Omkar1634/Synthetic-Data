@@ -42,7 +42,7 @@ double MonteCarlo(
     double derm_mua, double derm_mus, double derm_g,
     double epidermis_thickness)
 {
-    const int    totalPhotons = 1000000;
+    const int    totalPhotons = 100000; 
     const double n_tissue     = 1.4;
     const double n_air        = 1.0;
 
