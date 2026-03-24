@@ -104,9 +104,6 @@ double MonteCarlo(
                 z += s_bound * uz;
                 double s_left = s - s_bound;
 
-                // Absorption along boundary segment
-                W *= exp(-mua * s_bound);
-
                 if (hit_surf) {
                     // ── Top surface: Fresnel (tissue→air) ───────────────
                     double cos_i = fabs(uz);
@@ -135,20 +132,17 @@ double MonteCarlo(
                 if (s_left > 1e-12) {
                     r += s_left * ur;
                     z += s_left * uz;
-                    W *= exp(-mua * s_left);
                 }
 
             } else {
                 // ── Normal step, no boundary crossed ────────────────────
                 r += s * ur;
                 z += s * uz;
-                W *= exp(-mua * s);
             }
 
-            // ── Absorption (implicit capture via weight) ─────────────────
-            // W already reduced by exp(-mua*s) above — this is the correct
-            // approach for the 2D walk: weight carries survival probability.
-            // Scale by albedo for the scattering event:
+            // ── Absorption: discrete analog method ───────────────────────
+            // Step sampled from mu_t = mua + mus; at each collision event
+            // the photon survives with probability albedo = mus/mu_t.
             W *= albedo;
 
             // ── Henyey-Greenstein scattering (2D form per paper) ─────────
